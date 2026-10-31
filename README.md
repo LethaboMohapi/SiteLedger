@@ -48,10 +48,10 @@ Configure the API database, signing key and email settings first. Use HTTPS outs
 ## Still needed
 
 - Refresh tokens and authenticator recovery codes.
-- Complete user administration and project, task, report and expense editing workflows.
+- User invitations, account and role administration, task assignment, and remaining project, task, report and expense management actions such as deletion.
 - Private file uploads and storage.
 - Comprehensive audit logging and notifications, including durable email retries.
-- Additional dashboard views, PDF exports and other reporting beyond the current project, report and expense CSV exports.
+- PDF exports.
 - MVC improvements including role-aware action visibility, more comprehensive form validation and recovery flows.
 - Deployment configuration and verification of real SMTP delivery, persistent data-protection keys and shared token storage.
 - Broader tenant-isolation, end-to-end and security testing. Existing endpoints are not a substitute for a complete security review.
