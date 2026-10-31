@@ -1,5 +1,11 @@
 # SiteLedger
 
+[![Version: development](https://img.shields.io/badge/version-development-blue)](README.md)
+[![Build and test](https://github.com/LethaboMohapi/SiteLedger/actions/workflows/ci.yml/badge.svg?branch=master&event=push)](https://github.com/LethaboMohapi/SiteLedger/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![.NET 8.0](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
+[![MySQL 8.0](https://img.shields.io/badge/MySQL-8.0-00758F?logo=mysql&logoColor=white)](https://www.mysql.com/)
+
 SiteLedger is an **unfinished** C# / ASP.NET Core and MySQL foundation for managing construction projects. It is not yet a complete application and must not be exposed or deployed for production use. The MVC project is still a template and there is no supported account registration or onboarding flow.
 
 ## Current functionality
