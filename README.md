@@ -77,3 +77,5 @@ The test suite creates temporary MySQL containers. API startup also requires a M
 ## License
 
 [MIT](LICENSE)
+
+Coded by Lethabo Mohapi
