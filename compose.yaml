@@ -1,0 +1,73 @@
+name: siteledger-dev
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: siteledger
+      MYSQL_USER: siteledger
+      MYSQL_PASSWORD: ${SITELEDGER_DB_PASSWORD:?Set SITELEDGER_DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${SITELEDGER_DB_ROOT_PASSWORD:?Set SITELEDGER_DB_ROOT_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  api:
+    build:
+      context: .
+      dockerfile: src/SiteLedger.Api/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__SiteLedger: Server=mysql;Port=3306;Database=siteledger;User=siteledger;Password=${SITELEDGER_DB_PASSWORD:?Set SITELEDGER_DB_PASSWORD}
+      Authentication__Jwt__Issuer: siteledger-dev
+      Authentication__Jwt__Audience: siteledger-web
+      Authentication__Jwt__SigningKey: ${SITELEDGER_JWT_KEY:?Set a signing key of at least 32 bytes}
+      DataProtection__KeysPath: /keys
+      Storage__Path: /data
+      Account__PublicBaseUrl: ${SITELEDGER_PUBLIC_API_URL:-}
+      Email__SmtpHost: ${SITELEDGER_SMTP_HOST:-}
+      Email__SmtpPort: ${SITELEDGER_SMTP_PORT:-587}
+      Email__From: ${SITELEDGER_SMTP_FROM:-}
+      Email__Username: ${SITELEDGER_SMTP_USERNAME:-}
+      Email__Password: ${SITELEDGER_SMTP_PASSWORD:-}
+    volumes:
+      - api_keys:/keys
+      - file_data:/data
+    ports:
+      - "127.0.0.1:5051:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+  web:
+    build:
+      context: .
+      dockerfile: src/SiteLedger.Web/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      SiteLedgerApi__BaseUrl: http://api:8080/
+      SiteLedgerApi__AllowHttpDevelopment: "true"
+      ConnectionStrings__Redis: redis:6379
+      DataProtection__KeysPath: /keys
+    volumes:
+      - web_keys:/keys
+    ports:
+      - "127.0.0.1:5177:8080"
+    depends_on:
+      api:
+        condition: service_started
+      redis:
+        condition: service_healthy
+volumes:
+  mysql_data:
+  api_keys:
+  web_keys:
+  file_data:

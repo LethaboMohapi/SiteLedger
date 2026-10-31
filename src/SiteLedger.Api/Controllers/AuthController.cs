@@ -6,20 +6,38 @@ using SiteLedger.Api.Auth;
 
 namespace SiteLedger.Api.Controllers;
 
-public sealed record LoginRequest([Required, EmailAddress, MaxLength(256)] string Email, [Required, MaxLength(256)] string Password, [MaxLength(20)] string? AuthenticatorCode = null);
+public sealed record LoginRequest([Required, EmailAddress, MaxLength(256)] string Email, [Required, MaxLength(256)] string Password, [MaxLength(20)] string? AuthenticatorCode = null, [MaxLength(64)] string? RecoveryCode = null);
 
 public sealed record AuthenticatorRequest([Required, EmailAddress, MaxLength(256)] string Email, [Required, MaxLength(256)] string Password, [Required, MaxLength(20)] string Code);
+
+public sealed record RefreshRequest([Required, MaxLength(160)] string RefreshToken);
 
 [ApiController]
 [Route("api/v1/auth")]
 [EnableRateLimiting("auth")]
-public sealed class AuthController(ILoginService login, AuthenticatorService authenticator) : ControllerBase
+public sealed class AuthController(ILoginService login, AuthenticatorService authenticator, RefreshTokenService refresh) : ControllerBase
 {
     [HttpPost("login")]
     public async Task<IActionResult> Login(LoginRequest request, CancellationToken cancellationToken)
     {
-        var result = await login.LoginAsync(request.Email, request.Password, request.AuthenticatorCode, cancellationToken);
+        Response.Headers.CacheControl = "no-store";
+        var result = await login.LoginAsync(request.Email, request.Password, request.AuthenticatorCode, request.RecoveryCode, cancellationToken);
         return result is null ? Unauthorized() : Ok(result);
+    }
+
+    [HttpPost("refresh")]
+    public async Task<IActionResult> Refresh(RefreshRequest request, CancellationToken ct)
+    {
+        var result = await refresh.RotateAsync(request.RefreshToken, ct);
+        Response.Headers.CacheControl = "no-store";
+        return result is null ? Unauthorized() : Ok(result);
+    }
+
+    [HttpPost("logout")]
+    public async Task<IActionResult> Logout(RefreshRequest request, CancellationToken ct)
+    {
+        await refresh.RevokeAsync(request.RefreshToken, ct);
+        return NoContent();
     }
 
     [HttpPost("authenticator/setup")]
@@ -37,7 +55,17 @@ public sealed class AuthController(ILoginService login, AuthenticatorService aut
     public async Task<IActionResult> Disable(AuthenticatorRequest request, CancellationToken ct) =>
         await authenticator.SetEnabled(request.Email, request.Password, request.Code, false, ct) ? NoContent() : Unauthorized();
 
+    [HttpPost("authenticator/recovery-codes")]
+    public async Task<IActionResult> RecoveryCodes(AuthenticatorRequest request, CancellationToken ct)
+    {
+        var codes = await authenticator.GenerateRecoveryCodes(request.Email, request.Password, request.Code, ct);
+        if (codes is null) return Unauthorized();
+        Response.Headers.CacheControl = "no-store";
+        return Ok(new { codes });
+    }
+
     [HttpGet("me")]
     [Authorize]
-    public IActionResult Me() => Ok(new { name = User.Identity?.Name });
+    public IActionResult Me() => Ok(new { name = User.Identity?.Name, userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value,
+        roles = User.FindAll(System.Security.Claims.ClaimTypes.Role).Select(c => c.Value).ToArray() });
 }

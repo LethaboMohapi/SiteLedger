@@ -66,8 +66,15 @@ public sealed class ProjectMembersController(SiteLedgerDbContext db, ICurrentTen
 public sealed class TenantUsersController(SiteLedgerDbContext db, ICurrentTenant current) : ControllerBase
 {
     [HttpGet]
-    public async Task<IActionResult> List(CancellationToken ct) => Ok(await db.Users.AsNoTracking()
-        .Where(u => u.TenantId == current.TenantId)
-        .OrderBy(u => u.FullName).ThenBy(u => u.Id)
-        .Select(u => new { u.Id, u.FullName, u.Email, u.IsActive }).Take(500).ToListAsync(ct));
+    public async Task<IActionResult> List(CancellationToken ct)
+    {
+        var list = await db.Users.AsNoTracking().Where(u => u.TenantId == current.TenantId)
+            .OrderBy(u => u.FullName).ThenBy(u => u.Id)
+            .Select(u => new { u.Id, u.FullName, u.Email, u.IsActive }).Take(500).ToListAsync(ct);
+        var ids = list.Select(u => u.Id).ToArray();
+        var roleRows = await (from link in db.UserRoles join role in db.Roles on link.RoleId equals role.Id
+            where ids.Contains(link.UserId) select new { link.UserId, role.Name }).ToListAsync(ct);
+        return Ok(list.Select(u => new { u.Id, u.FullName, u.Email, u.IsActive,
+            role = roleRows.Where(r => r.UserId == u.Id).Select(r => r.Name).FirstOrDefault() }));
+    }
 }

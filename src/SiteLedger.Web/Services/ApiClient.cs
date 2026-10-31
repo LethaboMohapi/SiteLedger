@@ -25,6 +25,31 @@ public sealed class ApiClient(HttpClient http, IHttpContextAccessor accessor, ID
         catch (TaskCanceledException) { return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable); }
     }
 
+    public async Task<HttpResponseMessage> Identity(string accessToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "api/v1/auth/me");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        try { return await http.SendAsync(request); }
+        catch (HttpRequestException) { return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable); }
+        catch (TaskCanceledException) { return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable); }
+    }
+
+    public async Task<HttpResponseMessage> Upload(string path, IFormFile file, int category)
+    {
+        var key = accessor.HttpContext?.User.FindFirstValue("token_key");
+        var token = key is null ? null : await cache.GetStringAsync(key);
+        if (token is null) return new HttpResponseMessage(HttpStatusCode.Unauthorized);
+        using var request = new HttpRequestMessage(HttpMethod.Post, path);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        using var form = new MultipartFormDataContent();
+        form.Add(new StreamContent(file.OpenReadStream()), "file", Path.GetFileName(file.FileName));
+        form.Add(new StringContent(category.ToString(System.Globalization.CultureInfo.InvariantCulture)), "category");
+        request.Content = form;
+        try { return await http.SendAsync(request); }
+        catch (HttpRequestException) { return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable); }
+        catch (TaskCanceledException) { return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable); }
+    }
+
     public static async Task<JsonElement[]> Array(HttpResponseMessage response) => response.IsSuccessStatusCode
         ? await response.Content.ReadFromJsonAsync<JsonElement[]>() ?? [] : [];
 }

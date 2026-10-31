@@ -12,16 +12,22 @@ namespace SiteLedger.Web.Controllers;
 public sealed class AccountController(ApiClient api, IDistributedCache cache) : Controller
 {
     [HttpGet] public IActionResult Login() => View();
-    [HttpPost] public async Task<IActionResult> Login(string email, string password, string? authenticatorCode)
+    [HttpPost] public async Task<IActionResult> Login(string email, string password, string? authenticatorCode, string? recoveryCode)
     {
-        using var response = await api.Send(HttpMethod.Post, "api/v1/auth/login", new { email, password, authenticatorCode }, false);
+        using var response = await api.Send(HttpMethod.Post, "api/v1/auth/login", new { email, password, authenticatorCode, recoveryCode }, false);
         if (!response.IsSuccessStatusCode) { ModelState.AddModelError("", response.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable ? "The service is unavailable. Try again later." : "Sign-in failed. Check your details and authenticator code."); return View(); }
         var result = await response.Content.ReadFromJsonAsync<JsonElement>();
         var token = result.GetProperty("accessToken").GetString()!;
         var expires = result.GetProperty("expiresAt").GetDateTimeOffset();
+        using var identityResponse = await api.Identity(token);
+        if (!identityResponse.IsSuccessStatusCode) { ModelState.AddModelError("", "Your account could not be verified. Try again."); return View(); }
+        var account = await identityResponse.Content.ReadFromJsonAsync<JsonElement>();
         var key = "access:" + Guid.NewGuid().ToString("N");
         await cache.SetStringAsync(key, token, new DistributedCacheEntryOptions { AbsoluteExpiration = expires });
-        var identity = new ClaimsIdentity([new Claim(ClaimTypes.Name, email), new Claim("token_key", key)], CookieAuthenticationDefaults.AuthenticationScheme);
+        var claims = new List<Claim> { new(ClaimTypes.Name, email), new("token_key", key) };
+        foreach (var role in account.GetProperty("roles").EnumerateArray())
+            if (role.GetString() is string name) claims.Add(new Claim(ClaimTypes.Role, name));
+        var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
         await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity), new AuthenticationProperties { ExpiresUtc = expires, IsPersistent = false });
         return RedirectToAction("Index", "Projects");
     }
@@ -58,10 +64,17 @@ public sealed class AccountController(ApiClient api, IDistributedCache cache) : 
     [Authorize, HttpGet] public IActionResult Security() => View();
     [Authorize, HttpPost] public async Task<IActionResult> Security(string email, string password, string? code, string operation)
     {
-        if (operation is not ("setup" or "enable" or "disable")) return BadRequest();
+        if (operation is not ("setup" or "enable" or "disable" or "recovery-codes")) return BadRequest();
         var body = operation == "setup" ? (object)new { email, password } : new { email, password, code };
         using var response = await api.Send(HttpMethod.Post, $"api/v1/auth/authenticator/{operation}", body, false);
         if (!response.IsSuccessStatusCode) { ModelState.AddModelError("", "Could not update authenticator settings. Check your password and code."); return View(); }
+        if (operation == "recovery-codes")
+        {
+            var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+            ViewBag.RecoveryCodes = result.GetProperty("codes").EnumerateArray().Select(c => c.GetString() ?? "").ToArray();
+            Response.Headers.CacheControl = "no-store";
+            return View();
+        }
         if (operation == "setup")
         {
             var result = await response.Content.ReadFromJsonAsync<JsonElement>();

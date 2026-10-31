@@ -11,13 +11,15 @@ SiteLedger is an **unfinished** C# / ASP.NET Core and MySQL foundation for manag
 ## Current functionality
 
 - API account registration, email confirmation, password reset and authenticator setup for a new tenant administrator.
-- ASP.NET Core API with JWT login for active, confirmed tenant users, role checks, per-request account validation, and optional authenticator-app codes.
+- ASP.NET Core API with JWT login, rotating refresh-token families and optional authenticator-app codes or single-use recovery codes.
 - Tenant-scoped persistence, project listing and creation with a free-plan active-project limit.
 - Project and task creation and version-checked updates for managers and tenant administrators. Tenant administrators can list tenant users and add, remove, or restore project memberships; membership changes create audit records.
 - Project report and expense listing, draft creation, version-checked editing by the author while draft or rejected, submission and review. Project membership is required except for tenant administrators; viewers see only approved reports and expenses. A creator cannot review their own submission.
 - Project, report and expense CSV exports for Pro and Enterprise tenants. Tenant administrators can export all tenant projects; managers export only projects they belong to. The exports escape spreadsheet formula prefixes.
 - A dashboard showing visible projects, active projects, open tasks and approved expenses.
 - An ASP.NET Core MVC interface for registration, confirmation resend, password recovery, sign-in, authenticator setup, projects, tasks, reports, expenses, memberships and CSV downloads.
+- API invitations, tenant user and role administration, task assignment and version-checked task and eligible draft-record deletion. Project deletion is deliberately disabled pending concurrency safeguards.
+- Private local file uploads and downloads, with project access checks, quotas and viewer-sharing controls.
 - Domain rules for plan limits, permissions and approval transitions; a MySQL schema migration; and automated tests.
 
 ### Project CSV export
@@ -32,11 +34,11 @@ Set `Account__PublicBaseUrl` to the externally accessible HTTPS API origin and c
 
 ### Authenticator API
 
-Existing confirmed users can request an authenticator key with `POST /api/v1/auth/authenticator/setup` (email and password), then verify a code at `POST /api/v1/auth/authenticator/enable` (email, password and code). Once enabled, include `authenticatorCode` with the password at `POST /api/v1/auth/login`. `POST /api/v1/auth/authenticator/disable` also requires email, password and a current code. These endpoints must be used over HTTPS. Enabling or disabling invalidates existing access tokens. Recovery codes and account recovery are not implemented; losing the authenticator can lock a user out.
+Existing confirmed users can request an authenticator key with `POST /api/v1/auth/authenticator/setup` (email and password), then verify a code at `POST /api/v1/auth/authenticator/enable` (email, password and code). Once enabled, include `authenticatorCode` with the password at `POST /api/v1/auth/login`. `POST /api/v1/auth/authenticator/disable` also requires email, password and a current code. These endpoints must be used over HTTPS. Enabling or disabling invalidates existing access tokens. Generate one-time recovery codes in the MVC security page or through `POST /api/v1/auth/authenticator/recovery-codes`; save them securely because they are shown only once. API clients can refresh at `POST /api/v1/auth/refresh` and revoke the token family at `POST /api/v1/auth/logout`. An issued access token remains valid until it expires or its security stamp changes.
 
 ### MVC interface
 
-Run the API and web projects separately. For local development the MVC project defaults to `http://localhost:5051/` for the API; set `SiteLedgerApi__BaseUrl` to the API HTTPS origin in production. The web app uses an HTTP-only protected authentication cookie and keeps access tokens server-side in an in-memory cache until they expire. Sign-in is required again after expiry or restart; refresh tokens are not yet implemented. A production multi-instance deployment needs shared, durable data-protection keys and a suitable distributed token cache. The API performs the final authorization checks; the interface does not yet hide every action a user cannot perform.
+Run the API and web projects separately. For local development the MVC project defaults to `http://localhost:5051/` for the API; set `SiteLedgerApi__BaseUrl` to the API HTTPS origin in production. The web app uses an HTTP-only protected authentication cookie and keeps access tokens server-side in an in-memory cache until they expire. The MVC client does not yet use API refresh tokens; sign-in is required again when its access token expires. An in-memory cache also signs users out after a restart. Redis-backed shared token caching and certificate-protected persistent data-protection keys are configurable; production still needs a secure shared deployment and verification. The API performs the final authorization checks; the interface does not yet hide every action a user cannot perform.
 
 ```sh
 dotnet run --project src/SiteLedger.Api
@@ -47,14 +49,18 @@ Configure the API database, signing key and email settings first. Use HTTPS outs
 
 ## Still needed
 
-- Refresh tokens and authenticator recovery codes.
-- User invitations, account and role administration, task assignment, and remaining project, task, report and expense management actions such as deletion.
-- Private file uploads and storage.
-- Comprehensive audit logging and notifications, including durable email retries.
+- Automatic MVC refresh and logout revocation of its server-side refresh session.
+- Safe project deletion, plus remaining management workflows and their MVC controls for task assignment and deletion.
+- Shared production file storage, crash reconciliation and cleanup, and malware/full-format inspection. The current private storage uses a local filesystem and signature checks.
+- Comprehensive audit logging and notifications, including a durable email queue and retries; the current audit covers only selected actions.
 - PDF exports.
-- MVC improvements including role-aware action visibility, more comprehensive form validation and recovery flows.
-- Deployment configuration and verification of real SMTP delivery, persistent data-protection keys and shared token storage.
+- MVC improvements including complete role-aware action visibility and more comprehensive validation and recovery flows.
+- Production deployment configuration and verification of real SMTP delivery, persistent protected keys and secure shared token storage. See [deployment notes](docs/DEPLOYMENT.md) for the local Compose setup.
 - Broader tenant-isolation, end-to-end and security testing. Existing endpoints are not a substitute for a complete security review.
+
+### Private files
+
+Set `Storage__Path` to an absolute private directory outside the web root. Uploads accept PDF, PNG and JPEG signatures, subject to plan quotas. Files are served as attachments. The current implementation uses local disk, does not scan for malware and does not reconcile files after a crash; it is not a shared production blob store.
 
 ## Build and test
 

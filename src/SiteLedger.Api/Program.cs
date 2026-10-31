@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.DataProtection;
+using System.Security.Cryptography.X509Certificates;
 using System.Security.Claims;
 using System.Text;
 using System.Threading.RateLimiting;
@@ -12,6 +14,20 @@ using SiteLedger.Infrastructure;
 using TokenOptions = SiteLedger.Api.Auth.TokenOptions;
 
 var builder = WebApplication.CreateBuilder(args);
+var keyPath = builder.Configuration["DataProtection:KeysPath"];
+if (string.IsNullOrWhiteSpace(keyPath) && !builder.Environment.IsDevelopment())
+    throw new InvalidOperationException("DataProtection:KeysPath is required outside development.");
+if (!string.IsNullOrWhiteSpace(keyPath))
+{
+    if (!Path.IsPathFullyQualified(keyPath)) throw new InvalidOperationException("DataProtection:KeysPath must be absolute.");
+    var protection = builder.Services.AddDataProtection().SetApplicationName("SiteLedger.Api").PersistKeysToFileSystem(new DirectoryInfo(keyPath));
+    var certificatePath = builder.Configuration["DataProtection:CertificatePath"];
+    if (!string.IsNullOrWhiteSpace(certificatePath))
+        protection.ProtectKeysWithCertificate(new X509Certificate2(certificatePath, builder.Configuration["DataProtection:CertificatePassword"]));
+    else if (!builder.Environment.IsDevelopment())
+        throw new InvalidOperationException("DataProtection:CertificatePath is required when persisting keys outside development.");
+}
+
 var tokenSection = builder.Configuration.GetSection(TokenOptions.SectionName);
 var tokenSettings = tokenSection.Get<TokenOptions>() ?? new TokenOptions();
 var database = builder.Configuration.GetConnectionString("SiteLedger") ?? throw new InvalidOperationException("ConnectionStrings:SiteLedger is required.");
@@ -30,6 +46,7 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 }).AddEntityFrameworkStores<SiteLedgerDbContext>().AddDefaultTokenProviders();
 builder.Services.AddScoped<ILoginService, LoginService>();
 builder.Services.AddScoped<AuthenticatorService>();
+builder.Services.AddScoped<RefreshTokenService>();
 builder.Services.AddScoped<IAccountEmailSender, SmtpAccountEmailSender>();
 builder.Services.AddScoped<IProjectService, ProjectService>();
 builder.Services.AddAuthentication(options =>
@@ -88,6 +105,12 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+if (args.Contains("--migrate", StringComparer.Ordinal))
+{
+    await using var scope = app.Services.CreateAsyncScope();
+    await scope.ServiceProvider.GetRequiredService<SiteLedgerDbContext>().Database.MigrateAsync();
+    return;
+}
 app.Run();
 
 public partial class Program;
