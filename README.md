@@ -1,9 +1,31 @@
-# SiteLedger — incomplete foundation
+# SiteLedger
 
-This is an unfinished scaffold, not a runnable SiteLedger application and not suitable for production. The API and MVC projects still contain template code. The tenant claim resolver and domain model are not wired into an authentication pipeline or data store.
+SiteLedger is an **unfinished** C# / ASP.NET Core and MySQL foundation for managing construction projects. It is not yet a complete application and must not be exposed or deployed for production use. The MVC project is still a template and there is no supported account registration or onboarding flow.
 
-Implemented so far: partial domain types, plan limits and checks, approval transitions, a permission matrix, pure access rules, a tenant-scoped EF context and an initial MySQL migration. The API includes password-based JWT login for confirmed, active users and limited project listing and creation. MySQL-backed tests cover project isolation for database reads and guessed-ID updates/deletes, and selected HTTP authorization and plan-limit behavior. Registration, refresh tokens, 2FA and the rest of the API and UI are incomplete. Identity records and privileged administrative access do not yet have the required isolation paths.
+## Current functionality
 
-Still required: MySQL Identity and EF Core mapping and migrations; tenant isolation; authorization and project membership checks; user and project management; all report and expense workflows; uploads and private blob access; refresh tokens and secure server-side MVC token storage; plan limit enforcement; PDF reports and API keys; Docker configuration; integration tests; and a complete UI. Do not expose or deploy this scaffold.
+- ASP.NET Core API with password-based JWT login for active, confirmed tenant users, role checks and per-request account validation.
+- Tenant-scoped persistence, project listing and creation with a free-plan active-project limit.
+- Project task listing and creation, and version-checked updates for managers and tenant administrators.
+- Project report and expense listing, draft creation, submission and review. Project membership is required except for tenant administrators; viewers see only approved reports and expenses. A creator cannot review their own submission.
+- Domain rules for plan limits, permissions and approval transitions; a MySQL schema migration; and automated tests.
 
-Run the tests with `dotnet test src/SiteLedger.Tests/SiteLedger.Tests.csproj` using the .NET 8 SDK, access to NuGet and a running Docker engine. See docs/VERIFICATION.md for the precise scope.
+## Still needed
+
+Account registration, confirmation, password recovery, two-factor authentication and refresh tokens; user and project membership management; complete project, task, report and expense editing workflows; uploads and private storage; audit and notifications; dashboards and exports; a functional MVC interface; deployment configuration; and broader tenant-isolation and end-to-end tests. The existing endpoints are not a substitute for a complete security review.
+
+## Build and test
+
+Requirements: .NET SDK 8.0.419 (see `global.json`), NuGet access, and a running Docker engine for the MySQL integration tests.
+
+```sh
+dotnet restore SiteLedger.sln
+dotnet build SiteLedger.sln --no-restore -warnaserror
+dotnet test src/SiteLedger.Tests/SiteLedger.Tests.csproj --no-build --no-restore
+```
+
+The test suite creates temporary MySQL containers. API startup also requires a MySQL connection string and JWT issuer, audience and signing key; registration, provisioning and configuration for a usable deployment have not yet been completed. See [verification](docs/VERIFICATION.md) and [progress](docs/PROGRESS.md) for current evidence and outstanding work.
+
+## License
+
+[MIT](LICENSE)

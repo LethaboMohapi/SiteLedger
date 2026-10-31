@@ -15,3 +15,8 @@ This file records checks performed against the revised specification. No full ap
 - `az bicep build`, deployment workflow and Azure deployment: not run; Azure infrastructure and workflows do not exist yet.
 
 Once these components are implemented, run `docker compose config`, `docker compose up --build`, the full `dotnet test` suite with coverage, and `az bicep build --file deploy/azure/main.bicep`. Follow the deployment guide and run its Azure smoke and rollback procedures against a real subscription when available.
+
+## Additional verification (2026-10-31)
+
+- `dotnet test src/SiteLedger.Tests/SiteLedger.Tests.csproj --no-restore`: 18 tests passed with Docker-backed MySQL. The expanded login integration test exercises task creation and stale-version updates, report creation, submission and review by another tenant administrator, self-review denial, expense creation and submission, invalid expenses, and inaccessible project IDs.
+- These checks do not verify full UI flows, identity onboarding, cross-tenant access for all new record types, production deployment, or the complete product.
