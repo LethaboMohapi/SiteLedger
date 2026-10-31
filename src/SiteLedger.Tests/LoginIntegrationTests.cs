@@ -2,6 +2,9 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.Hosting;
+using SiteLedger.Web.Services;
 using System.Security.Cryptography;
 using System.Buffers.Binary;
 using Microsoft.AspNetCore.Identity;
@@ -18,6 +21,13 @@ namespace SiteLedger.Tests;
 
 public sealed class LoginIntegrationTests
 {
+    private static string FormToken(string html)
+    {
+        var match = Regex.Match(html, "name=\"__RequestVerificationToken\" type=\"hidden\" value=\"([^\"]+)\"");
+        Assert.True(match.Success, "The form must contain an antiforgery token.");
+        return WebUtility.HtmlDecode(match.Groups[1].Value);
+    }
+
     private static string AuthenticatorCode(string key)
     {
         const string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
@@ -218,6 +228,18 @@ public sealed class LoginIntegrationTests
         Assert.Contains("\"Second\"", managerBody);
         Assert.DoesNotContain("Admin only", managerBody);
         Assert.Contains("Admin only", await reviewerClient.GetStringAsync("/api/v1/exports/projects.csv"));
+        var dashboard = await reviewerClient.GetFromJsonAsync<JsonElement>("/api/v1/dashboard");
+        Assert.Equal(3, dashboard.GetProperty("projects").GetInt32());
+        Assert.Equal(1, dashboard.GetProperty("openTasks").GetInt32());
+        var outsiderDashboard = await outsiderClient.GetFromJsonAsync<JsonElement>("/api/v1/dashboard");
+        Assert.Equal(0, outsiderDashboard.GetProperty("projects").GetInt32());
+        var reportsCsv = await client.GetAsync($"/api/v1/exports/projects/{firstId}/reports.csv");
+        Assert.Equal(HttpStatusCode.OK, reportsCsv.StatusCode);
+        Assert.Contains("Foundation work", await reportsCsv.Content.ReadAsStringAsync());
+        var expensesCsv = await client.GetAsync($"/api/v1/exports/projects/{firstId}/expenses.csv");
+        Assert.Equal(HttpStatusCode.OK, expensesCsv.StatusCode);
+        Assert.Contains("Supplier", await expensesCsv.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.Forbidden, (await outsiderClient.GetAsync($"/api/v1/exports/projects/{firstId}/expenses.csv")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await outsiderClient.GetAsync("/api/v1/exports/projects.csv")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/v1/projects")).StatusCode);
         await using var authFactory = factory.WithWebHostBuilder(_ => { });
@@ -257,6 +279,42 @@ public sealed class LoginIntegrationTests
         Assert.Equal(HttpStatusCode.OK, (await registrationClient.PostAsJsonAsync("/api/v1/account/password/reset", new { email = newEmail, token = resetToken, password = newPassword })).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await registrationClient.GetAsync("/api/v1/auth/me")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await registrationClient.PostAsJsonAsync("/api/v1/auth/login", new { email = newEmail, password = newPassword })).StatusCode);
+        await using var webApiFactory = factory.WithWebHostBuilder(_ => { });
+        _ = webApiFactory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
+        await using var webFactory = new WebApplicationFactory<SiteLedger.Web.WebEntryPoint>().WithWebHostBuilder(builder =>
+        {
+            builder.UseEnvironment("Development");
+            builder.ConfigureServices(services => services.AddHttpClient<ApiClient>().ConfigurePrimaryHttpMessageHandler(() => webApiFactory.Server.CreateHandler()));
+        });
+        using var webClient = webFactory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });
+        var loginHtml = await webClient.GetStringAsync("/Account/Login");
+        var webLogin = await webClient.PostAsync("/Account/Login", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = FormToken(loginHtml), ["email"] = newEmail, ["password"] = newPassword
+        }));
+        Assert.Equal(HttpStatusCode.Redirect, webLogin.StatusCode);
+        Assert.Equal("/Projects", webLogin.Headers.Location?.OriginalString);
+        var projectsHtml = await webClient.GetStringAsync("/Projects");
+        var missingCsrf = await webClient.PostAsync("/Projects/Create", new FormUrlEncodedContent(new Dictionary<string, string>()));
+        Assert.Equal(HttpStatusCode.BadRequest, missingCsrf.StatusCode);
+        var createWebProject = await webClient.PostAsync("/Projects/Create", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = FormToken(projectsHtml), ["name"] = "MVC project", ["clientName"] = "Client", ["siteAddress"] = "Site", ["budget"] = "200", ["startDate"] = "2026-01-01", ["status"] = "0"
+        }));
+        Assert.Equal(HttpStatusCode.Redirect, createWebProject.StatusCode);
+        projectsHtml = await webClient.GetStringAsync("/Projects");
+        Assert.Contains("MVC project", projectsHtml);
+        var detailPath = Regex.Match(projectsHtml, "href=\"(/Projects/Detail/[0-9a-fA-F-]+)\"").Groups[1].Value;
+        Assert.NotEmpty(detailPath);
+        var detailHtml = await webClient.GetStringAsync(detailPath);
+        Assert.Contains("Site reports", detailHtml);
+        var webProjectId = detailPath.Split('/').Last();
+        var createWebTask = await webClient.PostAsync("/Projects/Task", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = FormToken(detailHtml), ["id"] = webProjectId, ["title"] = "MVC task", ["description"] = "Inspect", ["priority"] = "0", ["status"] = "0", ["percentComplete"] = "0"
+        }));
+        Assert.Equal(HttpStatusCode.Redirect, createWebTask.StatusCode);
+        Assert.Contains("MVC task", await webClient.GetStringAsync(detailPath));
         using (var scope = factory.Services.CreateScope())
         {
             var users = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();

@@ -27,6 +27,7 @@
     <ProjectReference Include="..\SiteLedger.Core\SiteLedger.Core.csproj" />
     <ProjectReference Include="..\SiteLedger.Infrastructure\SiteLedger.Infrastructure.csproj" />
     <ProjectReference Include="..\SiteLedger.Api\SiteLedger.Api.csproj" />
+    <ProjectReference Include="..\SiteLedger.Web\SiteLedger.Web.csproj" />
   </ItemGroup>
 
 </Project>

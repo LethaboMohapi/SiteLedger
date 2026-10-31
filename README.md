@@ -6,7 +6,7 @@
 [![.NET 8.0](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
 [![MySQL 8.0](https://img.shields.io/badge/MySQL-8.0-00758F?logo=mysql&logoColor=white)](https://www.mysql.com/)
 
-SiteLedger is an **unfinished** C# / ASP.NET Core and MySQL foundation for managing construction projects. It is not yet a complete application and must not be exposed or deployed for production use. The MVC project is still a template; account management is currently available through the API only.
+SiteLedger is an **unfinished** C# / ASP.NET Core and MySQL foundation for managing construction projects. It is not yet a complete application and must not be exposed or deployed for production use. The MVC interface provides onboarding and access to the current project workflows; production deployment and a complete security review are still outstanding.
 
 ## Current functionality
 
@@ -15,12 +15,14 @@ SiteLedger is an **unfinished** C# / ASP.NET Core and MySQL foundation for manag
 - Tenant-scoped persistence, project listing and creation with a free-plan active-project limit.
 - Project and task creation and version-checked updates for managers and tenant administrators. Tenant administrators can list tenant users and add, remove, or restore project memberships; membership changes create audit records.
 - Project report and expense listing, draft creation, version-checked editing by the author while draft or rejected, submission and review. Project membership is required except for tenant administrators; viewers see only approved reports and expenses. A creator cannot review their own submission.
-- Project CSV export for Pro and Enterprise tenants. Tenant administrators can export all tenant projects; managers export only projects they belong to. The export escapes spreadsheet formula prefixes.
+- Project, report and expense CSV exports for Pro and Enterprise tenants. Tenant administrators can export all tenant projects; managers export only projects they belong to. The exports escape spreadsheet formula prefixes.
+- A dashboard showing visible projects, active projects, open tasks and approved expenses.
+- An ASP.NET Core MVC interface for registration, confirmation resend, password recovery, sign-in, authenticator setup, projects, tasks, reports, expenses, memberships and CSV downloads.
 - Domain rules for plan limits, permissions and approval transitions; a MySQL schema migration; and automated tests.
 
 ### Project CSV export
 
-`GET /api/v1/exports/projects.csv` returns a UTF-8 CSV attachment for a Pro or Enterprise tenant. The caller must be a tenant administrator or project manager. Managers receive only their assigned projects. The file contains project identifiers, names, clients, site addresses, budgets, dates and statuses.
+`GET /api/v1/exports/projects.csv` returns a UTF-8 CSV attachment for a Pro or Enterprise tenant. The caller must be a tenant administrator or project manager. Managers receive only their assigned projects. The file contains project identifiers, names, clients, site addresses, budgets, dates and statuses. `GET /api/v1/exports/projects/{projectId}/reports.csv` and `.../expenses.csv` export records for an accessible project under the same plan and role restrictions.
 
 ### Account API
 
@@ -32,15 +34,26 @@ Set `Account__PublicBaseUrl` to the externally accessible HTTPS API origin and c
 
 Existing confirmed users can request an authenticator key with `POST /api/v1/auth/authenticator/setup` (email and password), then verify a code at `POST /api/v1/auth/authenticator/enable` (email, password and code). Once enabled, include `authenticatorCode` with the password at `POST /api/v1/auth/login`. `POST /api/v1/auth/authenticator/disable` also requires email, password and a current code. These endpoints must be used over HTTPS. Enabling or disabling invalidates existing access tokens. Recovery codes and account recovery are not implemented; losing the authenticator can lock a user out.
 
+### MVC interface
+
+Run the API and web projects separately. For local development the MVC project defaults to `http://localhost:5051/` for the API; set `SiteLedgerApi__BaseUrl` to the API HTTPS origin in production. The web app uses an HTTP-only protected authentication cookie and keeps access tokens server-side in an in-memory cache until they expire. Sign-in is required again after expiry or restart; refresh tokens are not yet implemented. A production multi-instance deployment needs shared, durable data-protection keys and a suitable distributed token cache. The API performs the final authorization checks; the interface does not yet hide every action a user cannot perform.
+
+```sh
+dotnet run --project src/SiteLedger.Api
+dotnet run --project src/SiteLedger.Web
+```
+
+Configure the API database, signing key and email settings first. Use HTTPS outside local development.
+
 ## Still needed
 
 - Refresh tokens and authenticator recovery codes.
 - Complete user administration and project, task, report and expense editing workflows.
 - Private file uploads and storage.
 - Comprehensive audit logging and notifications, including durable email retries.
-- Dashboards, report and expense exports, and PDF exports. Project CSV export is available through the API as described above.
-- A functional MVC interface, including onboarding and access to the API features.
-- Deployment configuration and verification of real SMTP delivery and persistent data-protection keys.
+- Additional dashboard views, PDF exports and other reporting beyond the current project, report and expense CSV exports.
+- MVC improvements including role-aware action visibility, more comprehensive form validation and recovery flows.
+- Deployment configuration and verification of real SMTP delivery, persistent data-protection keys and shared token storage.
 - Broader tenant-isolation, end-to-end and security testing. Existing endpoints are not a substitute for a complete security review.
 
 ## Build and test
@@ -53,7 +66,7 @@ dotnet build SiteLedger.sln --no-restore -warnaserror
 dotnet test src/SiteLedger.Tests/SiteLedger.Tests.csproj --no-build --no-restore
 ```
 
-The test suite creates temporary MySQL containers. API startup also requires a MySQL connection string and JWT issuer, audience and signing key; the MVC onboarding flow and deployment configuration have not yet been completed. See [verification](docs/VERIFICATION.md) and [progress](docs/PROGRESS.md) for current evidence and outstanding work.
+The test suite creates temporary MySQL containers. API startup also requires a MySQL connection string and JWT issuer, audience and signing key; production deployment configuration has not yet been completed. See [verification](docs/VERIFICATION.md) and [progress](docs/PROGRESS.md) for current evidence and outstanding work.
 
 ## License
 

@@ -1,0 +1,30 @@
+using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Security.Claims;
+using System.Text.Json;
+using Microsoft.Extensions.Caching.Distributed;
+
+namespace SiteLedger.Web.Services;
+
+public sealed class ApiClient(HttpClient http, IHttpContextAccessor accessor, IDistributedCache cache)
+{
+    public async Task<HttpResponseMessage> Send(HttpMethod method, string path, object? body = null, bool authenticated = true)
+    {
+        using var request = new HttpRequestMessage(method, path);
+        if (body is not null) request.Content = JsonContent.Create(body);
+        if (authenticated)
+        {
+            var key = accessor.HttpContext?.User.FindFirstValue("token_key");
+            var token = key is null ? null : await cache.GetStringAsync(key);
+            if (token is null) return new HttpResponseMessage(HttpStatusCode.Unauthorized);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        }
+        try { return await http.SendAsync(request); }
+        catch (HttpRequestException) { return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable); }
+        catch (TaskCanceledException) { return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable); }
+    }
+
+    public static async Task<JsonElement[]> Array(HttpResponseMessage response) => response.IsSuccessStatusCode
+        ? await response.Content.ReadFromJsonAsync<JsonElement[]>() ?? [] : [];
+}

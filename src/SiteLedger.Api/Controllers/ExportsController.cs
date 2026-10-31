@@ -41,6 +41,41 @@ public sealed class ExportsController(SiteLedgerDbContext db, ICurrentTenant cur
         return new EmptyResult();
     }
 
+    [HttpGet("projects/{projectId:guid}/{kind:regex(^(reports|expenses)$)}.csv")]
+    public async Task<IActionResult> Records(Guid projectId, string kind, CancellationToken ct)
+    {
+        var tenant = await db.Tenants.AsNoTracking().SingleOrDefaultAsync(t => t.Id == current.TenantId, ct);
+        if (tenant is null || !PlanLimits.For(tenant.Plan).CsvExport)
+            return Problem(statusCode: StatusCodes.Status403Forbidden, title: "CSV export requires a Pro or Enterprise plan.");
+        if (!await db.Projects.AnyAsync(p => p.Id == projectId, ct) ||
+            (!User.IsInRole(Roles.TenantAdmin) && !await db.ProjectMembers.AnyAsync(m => m.ProjectId == projectId && m.UserId == current.UserId, ct))) return NotFound();
+        Response.ContentType = "text/csv; charset=utf-8";
+        Response.Headers.ContentDisposition = $"attachment; filename=siteledger-{kind}.csv";
+        Response.Headers.CacheControl = "no-store";
+        Response.Headers.XContentTypeOptions = "nosniff";
+        await using var writer = new StreamWriter(Response.Body, new UTF8Encoding(true), 4096, leaveOpen: true);
+        if (kind == "reports")
+        {
+            await writer.WriteLineAsync("Id,Date,Weather,Workers,Work summary,Issues,Status".AsMemory(), ct);
+            await foreach (var item in db.SiteReports.AsNoTracking().Where(x => x.ProjectId == projectId).OrderBy(x => x.ReportDate).ThenBy(x => x.Id).AsAsyncEnumerable().WithCancellation(ct))
+            {
+                var line = string.Join(',', Csv(item.Id.ToString()), Csv(item.ReportDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)), Csv(item.Weather), item.WorkersOnSite.ToString(CultureInfo.InvariantCulture), Csv(item.WorkSummary), Csv(item.Issues), Csv(item.Status.ToString()));
+                await writer.WriteLineAsync(line.AsMemory(), ct);
+            }
+        }
+        else
+        {
+            await writer.WriteLineAsync("Id,Date,Category,Amount,Supplier,Status".AsMemory(), ct);
+            await foreach (var item in db.Expenses.AsNoTracking().Where(x => x.ProjectId == projectId).OrderBy(x => x.ExpenseDate).ThenBy(x => x.Id).AsAsyncEnumerable().WithCancellation(ct))
+            {
+                var line = string.Join(',', Csv(item.Id.ToString()), Csv(item.ExpenseDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)), Csv(item.Category.ToString()), item.Amount.ToString("0.00", CultureInfo.InvariantCulture), Csv(item.Supplier), Csv(item.Status.ToString()));
+                await writer.WriteLineAsync(line.AsMemory(), ct);
+            }
+        }
+        await writer.FlushAsync(ct);
+        return new EmptyResult();
+    }
+
     private static string Csv(string value)
     {
         var trimmed = value.TrimStart();

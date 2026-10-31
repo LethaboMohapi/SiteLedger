@@ -40,3 +40,8 @@ Once these components are implemented, run `docker compose config`, `docker comp
 
 - `dotnet test src/SiteLedger.Tests/SiteLedger.Tests.csproj --no-restore`: 18 tests passed with Docker-backed MySQL. The HTTP integration test checks Free-plan rejection, Pro export, export permission denial for a member, formula-prefix escaping, and that a manager cannot export an unassigned project while a tenant administrator can.
 - Report, expense and PDF exports and the MVC interface are not implemented by this change.
+
+## Additional verification: MVC, dashboard and CSV exports
+
+- `dotnet test src/SiteLedger.Tests/SiteLedger.Tests.csproj --no-restore`: 18 tests passed with Docker-backed MySQL. An in-process MVC-to-API integration path tests sign-in, antiforgery rejection, project creation, task creation and rendered pages. Additional API assertions cover dashboard project counts, cross-tenant empty results and report/expense CSV downloads.
+- The home and registration pages were previewed locally. Real SMTP delivery, multi-instance deployment, browser-based verification of every form, role-aware action visibility and a complete security review remain outstanding.
