@@ -35,3 +35,8 @@ Once these components are implemented, run `docker compose config`, `docker comp
 
 - The MySQL-backed HTTP integration test exercises tenant registration, refusal to log in before email confirmation, confirmation using an Identity token, password reset, old-token rejection and login with the new password. Email delivery was replaced by an in-memory test sender.
 - Real SMTP delivery, email retries, a browser-based onboarding flow, persistence of production data-protection keys and comprehensive security review remain unverified.
+
+## Additional verification: project CSV export
+
+- `dotnet test src/SiteLedger.Tests/SiteLedger.Tests.csproj --no-restore`: 18 tests passed with Docker-backed MySQL. The HTTP integration test checks Free-plan rejection, Pro export, export permission denial for a member, formula-prefix escaping, and that a manager cannot export an unassigned project while a tenant administrator can.
+- Report, expense and PDF exports and the MVC interface are not implemented by this change.

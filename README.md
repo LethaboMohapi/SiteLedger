@@ -15,7 +15,12 @@ SiteLedger is an **unfinished** C# / ASP.NET Core and MySQL foundation for manag
 - Tenant-scoped persistence, project listing and creation with a free-plan active-project limit.
 - Project and task creation and version-checked updates for managers and tenant administrators. Tenant administrators can list tenant users and add, remove, or restore project memberships; membership changes create audit records.
 - Project report and expense listing, draft creation, version-checked editing by the author while draft or rejected, submission and review. Project membership is required except for tenant administrators; viewers see only approved reports and expenses. A creator cannot review their own submission.
+- Project CSV export for Pro and Enterprise tenants. Tenant administrators can export all tenant projects; managers export only projects they belong to. The export escapes spreadsheet formula prefixes.
 - Domain rules for plan limits, permissions and approval transitions; a MySQL schema migration; and automated tests.
+
+### Project CSV export
+
+`GET /api/v1/exports/projects.csv` returns a UTF-8 CSV attachment for a Pro or Enterprise tenant. The caller must be a tenant administrator or project manager. Managers receive only their assigned projects. The file contains project identifiers, names, clients, site addresses, budgets, dates and statuses.
 
 ### Account API
 
@@ -29,7 +34,14 @@ Existing confirmed users can request an authenticator key with `POST /api/v1/aut
 
 ## Still needed
 
-Two-factor recovery codes and refresh tokens; complete user administration; complete project, task, report and expense editing workflows; uploads and private storage; audit and notifications; dashboards and exports; a functional MVC interface; deployment configuration; and broader tenant-isolation and end-to-end tests. The existing endpoints are not a substitute for a complete security review.
+- Refresh tokens and authenticator recovery codes.
+- Complete user administration and project, task, report and expense editing workflows.
+- Private file uploads and storage.
+- Comprehensive audit logging and notifications, including durable email retries.
+- Dashboards, report and expense exports, and PDF exports. Project CSV export is available through the API as described above.
+- A functional MVC interface, including onboarding and access to the API features.
+- Deployment configuration and verification of real SMTP delivery and persistent data-protection keys.
+- Broader tenant-isolation, end-to-end and security testing. Existing endpoints are not a substitute for a complete security review.
 
 ## Build and test
 

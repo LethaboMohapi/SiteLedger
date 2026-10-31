@@ -133,7 +133,7 @@ public sealed class LoginIntegrationTests
         var firstProjectData = await firstProject.Content.ReadFromJsonAsync<JsonElement>();
         var firstId = firstProjectData.GetProperty("id").GetGuid();
         var projectVersion = firstProjectData.GetProperty("rowVersion").GetGuid();
-        var projectUpdate = new { name = "First updated", clientName = "Client", siteAddress = "Site", budget = 150m, startDate = "2026-01-01", status = 1 };
+        var projectUpdate = new { name = "=First updated", clientName = "Client", siteAddress = "Site", budget = 150m, startDate = "2026-01-01", status = 1 };
         Assert.Equal(HttpStatusCode.OK, (await client.PutAsJsonAsync($"/api/v1/projects/{firstId}?version={projectVersion}", projectUpdate)).StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, (await client.PutAsJsonAsync($"/api/v1/projects/{firstId}?version={projectVersion}", projectUpdate)).StatusCode);
         var taskInput = new { title = "Inspect site", description = "Initial inspection", priority = 1, status = 0, percentComplete = 0 };
@@ -197,6 +197,28 @@ public sealed class LoginIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync($"/api/v1/projects/{firstId}/expenses", new { expenseDate = "2026-01-02", category = 0, amount = -1, supplier = "Supplier" })).StatusCode);
         Assert.Equal(HttpStatusCode.Created, (await client.PostAsJsonAsync("/api/v1/projects", new { name = "Second", clientName = "Client", siteAddress = "Site", budget = 50m, startDate = "2026-01-01", status = 1 })).StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsJsonAsync("/api/v1/projects", new { name = "Third", clientName = "Client", siteAddress = "Site", budget = 50m, startDate = "2026-01-01", status = 1 })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await reviewerClient.GetAsync("/api/v1/exports/projects.csv")).StatusCode);
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SiteLedgerDbContext>();
+            var tenant = await db.Tenants.SingleAsync(t => t.Slug == "test");
+            tenant.Plan = Plan.Pro;
+            await db.SaveChangesAsync();
+        }
+        var csvResponse = await reviewerClient.GetAsync("/api/v1/exports/projects.csv");
+        Assert.Equal(HttpStatusCode.OK, csvResponse.StatusCode);
+        Assert.Equal("text/csv", csvResponse.Content.Headers.ContentType?.MediaType);
+        var csv = await csvResponse.Content.ReadAsStringAsync();
+        Assert.Contains("\"'=First updated\"", csv);
+        Assert.Contains("\"Second\"", csv);
+        Assert.Equal(HttpStatusCode.Created, (await reviewerClient.PostAsJsonAsync("/api/v1/projects", new { name = "Admin only", clientName = "Client", siteAddress = "Site", budget = 25m, startDate = "2026-01-01", status = 1 })).StatusCode);
+        var managerCsv = await client.GetAsync("/api/v1/exports/projects.csv");
+        Assert.Equal(HttpStatusCode.OK, managerCsv.StatusCode);
+        var managerBody = await managerCsv.Content.ReadAsStringAsync();
+        Assert.Contains("\"Second\"", managerBody);
+        Assert.DoesNotContain("Admin only", managerBody);
+        Assert.Contains("Admin only", await reviewerClient.GetStringAsync("/api/v1/exports/projects.csv"));
+        Assert.Equal(HttpStatusCode.Forbidden, (await outsiderClient.GetAsync("/api/v1/exports/projects.csv")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/v1/projects")).StatusCode);
         await using var authFactory = factory.WithWebHostBuilder(_ => { });
         using var authClient = authFactory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
