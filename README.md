@@ -10,15 +10,19 @@ SiteLedger is an **unfinished** C# / ASP.NET Core and MySQL foundation for manag
 
 ## Current functionality
 
-- ASP.NET Core API with password-based JWT login for active, confirmed tenant users, role checks and per-request account validation.
+- ASP.NET Core API with JWT login for active, confirmed tenant users, role checks, per-request account validation, and optional authenticator-app codes.
 - Tenant-scoped persistence, project listing and creation with a free-plan active-project limit.
 - Project and task creation and version-checked updates for managers and tenant administrators. Tenant administrators can list tenant users and add, remove, or restore project memberships; membership changes create audit records.
 - Project report and expense listing, draft creation, version-checked editing by the author while draft or rejected, submission and review. Project membership is required except for tenant administrators; viewers see only approved reports and expenses. A creator cannot review their own submission.
 - Domain rules for plan limits, permissions and approval transitions; a MySQL schema migration; and automated tests.
 
+### Authenticator API
+
+Existing confirmed users can request an authenticator key with `POST /api/v1/auth/authenticator/setup` (email and password), then verify a code at `POST /api/v1/auth/authenticator/enable` (email, password and code). Once enabled, include `authenticatorCode` with the password at `POST /api/v1/auth/login`. `POST /api/v1/auth/authenticator/disable` also requires email, password and a current code. These endpoints must be used over HTTPS. Enabling or disabling invalidates existing access tokens. Recovery codes and account recovery are not implemented; losing the authenticator can lock a user out.
+
 ## Still needed
 
-Account registration, confirmation, password recovery, two-factor authentication and refresh tokens; complete user administration; complete project, task, report and expense editing workflows; uploads and private storage; audit and notifications; dashboards and exports; a functional MVC interface; deployment configuration; and broader tenant-isolation and end-to-end tests. The existing endpoints are not a substitute for a complete security review.
+Account registration, confirmation, password recovery, two-factor recovery codes and refresh tokens; complete user administration; complete project, task, report and expense editing workflows; uploads and private storage; audit and notifications; dashboards and exports; a functional MVC interface; deployment configuration; and broader tenant-isolation and end-to-end tests. The existing endpoints are not a substitute for a complete security review.
 
 ## Build and test
 

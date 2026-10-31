@@ -29,6 +29,7 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     options.Lockout.AllowedForNewUsers = true;
 }).AddEntityFrameworkStores<SiteLedgerDbContext>().AddDefaultTokenProviders();
 builder.Services.AddScoped<ILoginService, LoginService>();
+builder.Services.AddScoped<AuthenticatorService>();
 builder.Services.AddScoped<IProjectService, ProjectService>();
 builder.Services.AddAuthentication(options =>
 {
@@ -53,7 +54,7 @@ builder.Services.AddAuthentication(options =>
             var manager = context.HttpContext.RequestServices.GetRequiredService<UserManager<ApplicationUser>>();
             var user = id is null ? null : await manager.FindByIdAsync(id);
             var db = context.HttpContext.RequestServices.GetRequiredService<SiteLedgerDbContext>();
-            if (user is null || !user.IsActive || !user.EmailConfirmed || user.TwoFactorEnabled || user.TenantId is null ||
+            if (user is null || !user.IsActive || !user.EmailConfirmed || user.TenantId is null ||
                 !Guid.TryParse(tenantClaim, out var tenantId) || user.TenantId != tenantId ||
                 user.SecurityStamp is null || principal?.FindFirstValue("security_stamp") != user.SecurityStamp ||
                 !await db.Tenants.AnyAsync(x => x.Id == tenantId && x.SubscriptionStatus == SubscriptionStatus.Active, context.HttpContext.RequestAborted))

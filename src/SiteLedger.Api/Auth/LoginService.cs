@@ -14,20 +14,30 @@ public sealed record LoginResult(string AccessToken, DateTimeOffset ExpiresAt);
 
 public interface ILoginService
 {
-    Task<LoginResult?> LoginAsync(string email, string password, CancellationToken cancellationToken);
+    Task<LoginResult?> LoginAsync(string email, string password, string? authenticatorCode, CancellationToken cancellationToken);
 }
 
-public sealed class LoginService(UserManager<ApplicationUser> users, SignInManager<ApplicationUser> signIn,
+public sealed class LoginService(UserManager<ApplicationUser> users,
     SiteLedgerDbContext db, IOptions<TokenOptions> options) : ILoginService
 {
-    public async Task<LoginResult?> LoginAsync(string email, string password, CancellationToken cancellationToken)
+    public async Task<LoginResult?> LoginAsync(string email, string password, string? authenticatorCode, CancellationToken cancellationToken)
     {
         var user = await users.FindByEmailAsync(email);
-        if (user is null || !user.IsActive || !user.EmailConfirmed || user.TenantId is null || user.TwoFactorEnabled) return null;
+        if (user is null || !user.IsActive || !user.EmailConfirmed || user.TenantId is null || await users.IsLockedOutAsync(user)) return null;
         var tenant = await db.Tenants.AsNoTracking().SingleOrDefaultAsync(x => x.Id == user.TenantId, cancellationToken);
         if (tenant is null || tenant.SubscriptionStatus != SubscriptionStatus.Active) return null;
-        var result = await signIn.CheckPasswordSignInAsync(user, password, lockoutOnFailure: true);
-        if (!result.Succeeded || result.RequiresTwoFactor) return null;
+        if (!await users.CheckPasswordAsync(user, password))
+        {
+            await users.AccessFailedAsync(user);
+            return null;
+        }
+        if (user.TwoFactorEnabled && (string.IsNullOrWhiteSpace(authenticatorCode) ||
+            !await users.VerifyTwoFactorTokenAsync(user, Microsoft.AspNetCore.Identity.TokenOptions.DefaultAuthenticatorProvider, authenticatorCode.Replace(" ", "").Replace("-", ""))))
+        {
+            await users.AccessFailedAsync(user);
+            return null;
+        }
+        await users.ResetAccessFailedCountAsync(user);
         var roles = await users.GetRolesAsync(user);
         var settings = options.Value;
         var expires = DateTimeOffset.UtcNow.AddMinutes(settings.AccessTokenMinutes);

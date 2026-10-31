@@ -25,3 +25,8 @@ Once these components are implemented, run `docker compose config`, `docker comp
 
 - `dotnet test src/SiteLedger.Tests/SiteLedger.Tests.csproj --no-restore`: 18 tests passed with MySQL containers. The expanded HTTP test checks membership add, removal and restoration, denial of a cross-tenant membership, guessed project access from another tenant, and version conflicts on project, report and expense edits.
 - Account onboarding, production deployment, browser-based workflows, and complete security and cross-tenant coverage remain unverified.
+
+## Additional verification: authenticator codes
+
+- `dotnet test src/SiteLedger.Tests/SiteLedger.Tests.csproj --no-restore`: 18 tests passed with Docker-backed MySQL. The HTTP integration test exercises authenticator setup, enabling, denial without a code or with an invalid code, login with a valid code, disabling, and invalidation of old access tokens.
+- Authenticator recovery, registration, password recovery, refresh tokens, production configuration, and a complete security review remain unimplemented or unverified. Earlier references to the scaffold denying all 2FA users describe the prior implementation.

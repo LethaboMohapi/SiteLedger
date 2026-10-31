@@ -2,6 +2,8 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Security.Cryptography;
+using System.Buffers.Binary;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -16,6 +18,23 @@ namespace SiteLedger.Tests;
 
 public sealed class LoginIntegrationTests
 {
+    private static string AuthenticatorCode(string key)
+    {
+        const string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+        var bits = 0; var buffer = 0; var bytes = new List<byte>();
+        foreach (var ch in key.ToUpperInvariant())
+        {
+            buffer = (buffer << 5) | alphabet.IndexOf(ch); bits += 5;
+            if (bits >= 8) { bits -= 8; bytes.Add((byte)(buffer >> bits)); buffer &= (1 << bits) - 1; }
+        }
+        var counter = new byte[8];
+        BinaryPrimitives.WriteInt64BigEndian(counter, DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 30);
+        var hash = HMACSHA1.HashData(bytes.ToArray(), counter);
+        var offset = hash[^1] & 15;
+        var value = BinaryPrimitives.ReadInt32BigEndian(hash.AsSpan(offset, 4)) & 0x7fffffff;
+        return (value % 1_000_000).ToString("D6");
+    }
+
     private sealed class TemporaryEnvironment : IDisposable
     {
         private readonly Dictionary<string, string?> previous = new();
@@ -167,6 +186,25 @@ public sealed class LoginIntegrationTests
         Assert.Equal(HttpStatusCode.Created, (await client.PostAsJsonAsync("/api/v1/projects", new { name = "Second", clientName = "Client", siteAddress = "Site", budget = 50m, startDate = "2026-01-01", status = 1 })).StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsJsonAsync("/api/v1/projects", new { name = "Third", clientName = "Client", siteAddress = "Site", budget = 50m, startDate = "2026-01-01", status = 1 })).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/v1/projects")).StatusCode);
+        await using var authFactory = factory.WithWebHostBuilder(_ => { });
+        using var authClient = authFactory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
+        authClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", reviewerToken.AccessToken);
+        var setup = await authClient.PostAsJsonAsync("/api/v1/auth/authenticator/setup", new { email = "reviewer@example.test", password });
+        Assert.Equal(HttpStatusCode.OK, setup.StatusCode);
+        var key = (await setup.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("key").GetString()!;
+        var code = AuthenticatorCode(key);
+        Assert.Equal(HttpStatusCode.NoContent, (await authClient.PostAsJsonAsync("/api/v1/auth/authenticator/enable", new { email = "reviewer@example.test", password, code })).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await authClient.GetAsync("/api/v1/auth/me")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await authClient.PostAsJsonAsync("/api/v1/auth/login", new { email = "reviewer@example.test", password })).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await authClient.PostAsJsonAsync("/api/v1/auth/login", new { email = "reviewer@example.test", password, authenticatorCode = "invalid" })).StatusCode);
+        var twoFactorLogin = await authClient.PostAsJsonAsync("/api/v1/auth/login", new { email = "reviewer@example.test", password, authenticatorCode = AuthenticatorCode(key) });
+        Assert.Equal(HttpStatusCode.OK, twoFactorLogin.StatusCode);
+        var twoFactorToken = await twoFactorLogin.Content.ReadFromJsonAsync<LoginResult>();
+        Assert.NotNull(twoFactorToken);
+        authClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", twoFactorToken.AccessToken);
+        Assert.Equal(HttpStatusCode.OK, (await authClient.GetAsync("/api/v1/auth/me")).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await authClient.PostAsJsonAsync("/api/v1/auth/authenticator/disable", new { email = "reviewer@example.test", password, code = AuthenticatorCode(key) })).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await authClient.GetAsync("/api/v1/auth/me")).StatusCode);
         using (var scope = factory.Services.CreateScope())
         {
             var users = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
