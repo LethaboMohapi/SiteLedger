@@ -30,3 +30,8 @@ Once these components are implemented, run `docker compose config`, `docker comp
 
 - `dotnet test src/SiteLedger.Tests/SiteLedger.Tests.csproj --no-restore`: 18 tests passed with Docker-backed MySQL. The HTTP integration test exercises authenticator setup, enabling, denial without a code or with an invalid code, login with a valid code, disabling, and invalidation of old access tokens.
 - Authenticator recovery, registration, password recovery, refresh tokens, production configuration, and a complete security review remain unimplemented or unverified. Earlier references to the scaffold denying all 2FA users describe the prior implementation.
+
+## Additional verification: account lifecycle
+
+- The MySQL-backed HTTP integration test exercises tenant registration, refusal to log in before email confirmation, confirmation using an Identity token, password reset, old-token rejection and login with the new password. Email delivery was replaced by an in-memory test sender.
+- Real SMTP delivery, email retries, a browser-based onboarding flow, persistence of production data-protection keys and comprehensive security review remain unverified.

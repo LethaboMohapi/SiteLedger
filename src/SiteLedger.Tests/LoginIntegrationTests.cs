@@ -35,6 +35,13 @@ public sealed class LoginIntegrationTests
         return (value % 1_000_000).ToString("D6");
     }
 
+    private sealed class CapturedEmail : IAccountEmailSender
+    {
+        public bool IsConfigured => true;
+        public string Body { get; private set; } = "";
+        public Task SendAsync(string address, string subject, string body, CancellationToken ct) { Body = body; return Task.CompletedTask; }
+    }
+
     private sealed class TemporaryEnvironment : IDisposable
     {
         private readonly Dictionary<string, string?> previous = new();
@@ -59,14 +66,19 @@ public sealed class LoginIntegrationTests
         environment.Set("Authentication__Jwt__Issuer", "siteledger-test");
         environment.Set("Authentication__Jwt__Audience", "siteledger-test-client");
         environment.Set("Authentication__Jwt__SigningKey", "test-key-used-only-for-integration-test-123456");
-        await using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, config) =>
-            config.AddInMemoryCollection(new Dictionary<string, string?>
+        var capturedEmail = new CapturedEmail();
+        await using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureServices(services => services.AddSingleton<IAccountEmailSender>(capturedEmail));
+            builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ConnectionStrings:SiteLedger"] = mysql.GetConnectionString(),
                 ["Authentication:Jwt:Issuer"] = "siteledger-test",
                 ["Authentication:Jwt:Audience"] = "siteledger-test-client",
-                ["Authentication:Jwt:SigningKey"] = "test-key-used-only-for-integration-test-123456"
-            })));
+                ["Authentication:Jwt:SigningKey"] = "test-key-used-only-for-integration-test-123456",
+                ["Account:PublicBaseUrl"] = "https://localhost"
+            }));
+        });
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
         const string email = "member@example.test";
         const string password = "Valid-test-password-123!";
@@ -205,6 +217,24 @@ public sealed class LoginIntegrationTests
         Assert.Equal(HttpStatusCode.OK, (await authClient.GetAsync("/api/v1/auth/me")).StatusCode);
         Assert.Equal(HttpStatusCode.NoContent, (await authClient.PostAsJsonAsync("/api/v1/auth/authenticator/disable", new { email = "reviewer@example.test", password, code = AuthenticatorCode(key) })).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await authClient.GetAsync("/api/v1/auth/me")).StatusCode);
+        await using var registrationFactory = factory.WithWebHostBuilder(_ => { });
+        using var registrationClient = registrationFactory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
+        const string newEmail = "new@example.test";
+        const string newPassword = "Another-valid-password-123!";
+        Assert.Equal(HttpStatusCode.Accepted, (await registrationClient.PostAsJsonAsync("/api/v1/account/register", new { email = newEmail, password, fullName = "New User", companyName = "New Company" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await registrationClient.PostAsJsonAsync("/api/v1/auth/login", new { email = newEmail, password })).StatusCode);
+        var confirmUrl = new Uri(capturedEmail.Body.Split(' ').Last());
+        Assert.Equal(HttpStatusCode.OK, (await registrationClient.GetAsync(confirmUrl.PathAndQuery)).StatusCode);
+        var registeredLogin = await registrationClient.PostAsJsonAsync("/api/v1/auth/login", new { email = newEmail, password });
+        Assert.Equal(HttpStatusCode.OK, registeredLogin.StatusCode);
+        var registeredToken = await registeredLogin.Content.ReadFromJsonAsync<LoginResult>();
+        Assert.NotNull(registeredToken);
+        registrationClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", registeredToken.AccessToken);
+        Assert.Equal(HttpStatusCode.Accepted, (await registrationClient.PostAsJsonAsync("/api/v1/account/password/forgot", new { email = newEmail })).StatusCode);
+        var resetToken = capturedEmail.Body.Split(' ').Last();
+        Assert.Equal(HttpStatusCode.OK, (await registrationClient.PostAsJsonAsync("/api/v1/account/password/reset", new { email = newEmail, token = resetToken, password = newPassword })).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await registrationClient.GetAsync("/api/v1/auth/me")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await registrationClient.PostAsJsonAsync("/api/v1/auth/login", new { email = newEmail, password = newPassword })).StatusCode);
         using (var scope = factory.Services.CreateScope())
         {
             var users = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();

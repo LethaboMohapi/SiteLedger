@@ -30,6 +30,7 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 }).AddEntityFrameworkStores<SiteLedgerDbContext>().AddDefaultTokenProviders();
 builder.Services.AddScoped<ILoginService, LoginService>();
 builder.Services.AddScoped<AuthenticatorService>();
+builder.Services.AddScoped<IAccountEmailSender, SmtpAccountEmailSender>();
 builder.Services.AddScoped<IProjectService, ProjectService>();
 builder.Services.AddAuthentication(options =>
 {
