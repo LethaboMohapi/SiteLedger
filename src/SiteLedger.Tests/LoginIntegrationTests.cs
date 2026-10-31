@@ -57,6 +57,8 @@ public sealed class LoginIntegrationTests
             await db.Database.MigrateAsync();
             var tenant = new Tenant { CompanyName = "Test", Slug = "test" };
             db.Tenants.Add(tenant);
+            var otherTenant = new Tenant { CompanyName = "Other", Slug = "other" };
+            db.Tenants.Add(otherTenant);
             await db.SaveChangesAsync();
             var roles = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
             Assert.True((await roles.CreateAsync(new IdentityRole(Roles.Member))).Succeeded);
@@ -69,6 +71,9 @@ public sealed class LoginIntegrationTests
             var reviewer = new ApplicationUser { UserName = "reviewer@example.test", Email = "reviewer@example.test", EmailConfirmed = true, FullName = "Reviewer", TenantId = tenant.Id };
             Assert.True((await users.CreateAsync(reviewer, password)).Succeeded);
             Assert.True((await users.AddToRoleAsync(reviewer, Roles.TenantAdmin)).Succeeded);
+            var outsider = new ApplicationUser { UserName = "outsider@example.test", Email = "outsider@example.test", EmailConfirmed = true, FullName = "Outsider", TenantId = otherTenant.Id };
+            Assert.True((await users.CreateAsync(outsider, password)).Succeeded);
+            Assert.True((await users.AddToRoleAsync(outsider, Roles.Member)).Succeeded);
         }
         var incorrect = await client.PostAsJsonAsync("/api/v1/auth/login", new { email, password = "incorrect" });
         Assert.Equal(HttpStatusCode.Unauthorized, incorrect.StatusCode);
@@ -94,7 +99,12 @@ public sealed class LoginIntegrationTests
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.AccessToken);
         var firstProject = await client.PostAsJsonAsync("/api/v1/projects", project);
         Assert.Equal(HttpStatusCode.Created, firstProject.StatusCode);
-        var firstId = (await firstProject.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        var firstProjectData = await firstProject.Content.ReadFromJsonAsync<JsonElement>();
+        var firstId = firstProjectData.GetProperty("id").GetGuid();
+        var projectVersion = firstProjectData.GetProperty("rowVersion").GetGuid();
+        var projectUpdate = new { name = "First updated", clientName = "Client", siteAddress = "Site", budget = 150m, startDate = "2026-01-01", status = 1 };
+        Assert.Equal(HttpStatusCode.OK, (await client.PutAsJsonAsync($"/api/v1/projects/{firstId}?version={projectVersion}", projectUpdate)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await client.PutAsJsonAsync($"/api/v1/projects/{firstId}?version={projectVersion}", projectUpdate)).StatusCode);
         var taskInput = new { title = "Inspect site", description = "Initial inspection", priority = 1, status = 0, percentComplete = 0 };
         var taskResponse = await client.PostAsJsonAsync($"/api/v1/projects/{firstId}/tasks", taskInput);
         Assert.Equal(HttpStatusCode.Created, taskResponse.StatusCode);
@@ -107,7 +117,12 @@ public sealed class LoginIntegrationTests
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/v1/projects/{Guid.NewGuid()}/tasks")).StatusCode);
         var reportResponse = await client.PostAsJsonAsync($"/api/v1/projects/{firstId}/reports", new { reportDate = "2026-01-02", weather = "Clear", workersOnSite = 3, workSummary = "Foundation work", issues = "None" });
         Assert.Equal(HttpStatusCode.Created, reportResponse.StatusCode);
-        var reportId = (await reportResponse.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        var reportObject = await reportResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var reportId = reportObject.GetProperty("id").GetGuid();
+        var reportVersion = reportObject.GetProperty("rowVersion").GetGuid();
+        var reportEdit = new { reportDate = "2026-01-02", weather = "Cloudy", workersOnSite = 4, workSummary = "Foundation work", issues = "None" };
+        Assert.Equal(HttpStatusCode.OK, (await client.PutAsJsonAsync($"/api/v1/projects/{firstId}/reports/{reportId}?version={reportVersion}", reportEdit)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await client.PutAsJsonAsync($"/api/v1/projects/{firstId}/reports/{reportId}?version={reportVersion}", reportEdit)).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await client.PostAsync($"/api/v1/projects/{firstId}/reports/{reportId}/submit", null)).StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsync($"/api/v1/projects/{firstId}/reports/{reportId}/submit", null)).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsJsonAsync($"/api/v1/projects/{firstId}/reports/{reportId}/review", new { approve = true, comment = "Approved" })).StatusCode);
@@ -116,12 +131,37 @@ public sealed class LoginIntegrationTests
         var reviewerToken = await reviewerLogin.Content.ReadFromJsonAsync<LoginResult>();
         Assert.NotNull(reviewerToken);
         reviewerClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", reviewerToken.AccessToken);
+        string reviewerId, outsiderId;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+            reviewerId = (await users.FindByEmailAsync("reviewer@example.test"))!.Id;
+            outsiderId = (await users.FindByEmailAsync("outsider@example.test"))!.Id;
+        }
+        var memberUrl = $"/api/v1/projects/{firstId}/members";
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync(memberUrl)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await reviewerClient.PutAsJsonAsync(memberUrl, new { userId = outsiderId, roleOnProject = "Member" })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await reviewerClient.PutAsJsonAsync(memberUrl, new { userId = reviewerId, roleOnProject = "Reviewer" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await reviewerClient.DeleteAsync($"{memberUrl}/{reviewerId}")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await reviewerClient.PutAsJsonAsync(memberUrl, new { userId = reviewerId, roleOnProject = "Reviewer" })).StatusCode);
+        using var outsiderClient = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
+        var outsiderLogin = await outsiderClient.PostAsJsonAsync("/api/v1/auth/login", new { email = "outsider@example.test", password });
+        var outsiderToken = await outsiderLogin.Content.ReadFromJsonAsync<LoginResult>();
+        Assert.NotNull(outsiderToken);
+        outsiderClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", outsiderToken.AccessToken);
+        Assert.Equal(HttpStatusCode.NotFound, (await outsiderClient.GetAsync($"/api/v1/projects/{firstId}/reports")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await outsiderClient.GetAsync($"/api/v1/projects/{firstId}/tasks")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await reviewerClient.PostAsJsonAsync($"/api/v1/projects/{firstId}/reports/{reportId}/review", new { approve = true, comment = "Approved" })).StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, (await reviewerClient.PostAsJsonAsync($"/api/v1/projects/{firstId}/reports/{reportId}/review", new { approve = true, comment = "Again" })).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/v1/projects/{Guid.NewGuid()}/reports")).StatusCode);
         var expenseResponse = await client.PostAsJsonAsync($"/api/v1/projects/{firstId}/expenses", new { expenseDate = "2026-01-02", category = 0, amount = 125.50m, supplier = "Supplier" });
         Assert.Equal(HttpStatusCode.Created, expenseResponse.StatusCode);
-        var expenseId = (await expenseResponse.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        var expenseData = await expenseResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var expenseId = expenseData.GetProperty("id").GetGuid();
+        var expenseVersion = expenseData.GetProperty("rowVersion").GetGuid();
+        var expenseUpdate = new { expenseDate = "2026-01-02", category = 0, amount = 150m, supplier = "Supplier" };
+        Assert.Equal(HttpStatusCode.OK, (await client.PutAsJsonAsync($"/api/v1/projects/{firstId}/expenses/{expenseId}?version={expenseVersion}", expenseUpdate)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await client.PutAsJsonAsync($"/api/v1/projects/{firstId}/expenses/{expenseId}?version={expenseVersion}", expenseUpdate)).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await client.PostAsync($"/api/v1/projects/{firstId}/expenses/{expenseId}/submit", null)).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync($"/api/v1/projects/{firstId}/expenses", new { expenseDate = "2026-01-02", category = 0, amount = -1, supplier = "Supplier" })).StatusCode);
         Assert.Equal(HttpStatusCode.Created, (await client.PostAsJsonAsync("/api/v1/projects", new { name = "Second", clientName = "Client", siteAddress = "Site", budget = 50m, startDate = "2026-01-01", status = 1 })).StatusCode);

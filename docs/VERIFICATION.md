@@ -20,3 +20,8 @@ Once these components are implemented, run `docker compose config`, `docker comp
 
 - `dotnet test src/SiteLedger.Tests/SiteLedger.Tests.csproj --no-restore`: 18 tests passed with Docker-backed MySQL. The expanded login integration test exercises task creation and stale-version updates, report creation, submission and review by another tenant administrator, self-review denial, expense creation and submission, invalid expenses, and inaccessible project IDs.
 - These checks do not verify full UI flows, identity onboarding, cross-tenant access for all new record types, production deployment, or the complete product.
+
+## Additional verification: membership and edits
+
+- `dotnet test src/SiteLedger.Tests/SiteLedger.Tests.csproj --no-restore`: 18 tests passed with MySQL containers. The expanded HTTP test checks membership add, removal and restoration, denial of a cross-tenant membership, guessed project access from another tenant, and version conflicts on project, report and expense edits.
+- Account onboarding, production deployment, browser-based workflows, and complete security and cross-tenant coverage remain unverified.

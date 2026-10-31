@@ -69,6 +69,39 @@ public sealed class ProjectRecordsController(SiteLedgerDbContext db, ICurrentTen
         return StatusCode(201, expense);
     }
 
+    [HttpPut("reports/{id:guid}")]
+    [Authorize(Policy = Permissions.CreateReport)]
+    public async Task<IActionResult> EditReport(Guid projectId, Guid id, [FromQuery] Guid version, NewReport input, CancellationToken ct)
+    {
+        if (!await CanAccess(projectId, ct)) return NotFound();
+        var item = await db.SiteReports.SingleOrDefaultAsync(x => x.ProjectId == projectId && x.Id == id, ct);
+        if (item is null) return NotFound();
+        if (item.CreatedByUserId != current.UserId) return Forbid();
+        if (item.Status is not (ApprovalStatus.Draft or ApprovalStatus.Rejected)) return Conflict(new { error = "Only draft or rejected records can be edited." });
+        if (version == Guid.Empty || input.ReportDate == default || string.IsNullOrWhiteSpace(input.Weather) || string.IsNullOrWhiteSpace(input.WorkSummary)) return BadRequest();
+        if (item.RowVersion != version) return Conflict(new { error = "The record changed. Reload and try again." });
+        item.ReportDate = input.ReportDate; item.Weather = input.Weather.Trim(); item.WorkersOnSite = input.WorkersOnSite;
+        item.WorkSummary = input.WorkSummary.Trim(); item.Issues = input.Issues?.Trim() ?? "";
+        try { await db.SaveChangesAsync(ct); return Ok(item); }
+        catch (DbUpdateConcurrencyException) { return Conflict(new { error = "The record changed. Reload and try again." }); }
+    }
+
+    [HttpPut("expenses/{id:guid}")]
+    [Authorize(Policy = Permissions.CreateReport)]
+    public async Task<IActionResult> EditExpense(Guid projectId, Guid id, [FromQuery] Guid version, NewExpense input, CancellationToken ct)
+    {
+        if (!await CanAccess(projectId, ct)) return NotFound();
+        var item = await db.Expenses.SingleOrDefaultAsync(x => x.ProjectId == projectId && x.Id == id, ct);
+        if (item is null) return NotFound();
+        if (item.CreatedByUserId != current.UserId) return Forbid();
+        if (item.Status is not (ApprovalStatus.Draft or ApprovalStatus.Rejected)) return Conflict(new { error = "Only draft or rejected records can be edited." });
+        if (version == Guid.Empty || input.ExpenseDate == default || !Enum.IsDefined(input.Category) || input.Amount <= 0 || input.Amount > 9999999999999999.99m || decimal.Round(input.Amount, 2) != input.Amount || string.IsNullOrWhiteSpace(input.Supplier)) return BadRequest();
+        if (item.RowVersion != version) return Conflict(new { error = "The record changed. Reload and try again." });
+        item.ExpenseDate = input.ExpenseDate; item.Category = input.Category; item.Amount = input.Amount; item.Supplier = input.Supplier.Trim();
+        try { await db.SaveChangesAsync(ct); return Ok(item); }
+        catch (DbUpdateConcurrencyException) { return Conflict(new { error = "The record changed. Reload and try again." }); }
+    }
+
     [HttpPost("{kind:regex(^(reports|expenses)$)}/{id:guid}/submit")]
     [Authorize(Policy = Permissions.CreateReport)]
     public async Task<IActionResult> Submit(Guid projectId, string kind, Guid id, CancellationToken ct)
