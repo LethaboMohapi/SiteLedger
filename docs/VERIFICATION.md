@@ -1,6 +1,17 @@
 # Verification
 
-This file records checks performed against the revised specification. No full application or deployment check has yet been completed. Run commands from the SiteLedger directory with .NET 8 installed.
+This file records verification snapshots. Earlier sections describe previous versions and must not be read as the current feature inventory. No complete production deployment or independent security review has been verified. Run commands from the SiteLedger directory with .NET 8 installed.
+
+## Latest verified snapshot: read auditing and account forms (2026-11-01)
+
+- `dotnet test src/SiteLedger.Tests/SiteLedger.Tests.csproj --no-restore -warnaserror -m:1 --logger 'trx;LogFileName=siteledger-verification.trx' --results-directory TestResults`: **35 passed, 0 failed, 0 skipped**, with Docker-backed MySQL and Redis. The command built all five projects with warnings treated as errors. The local TRX report is ignored by Git.
+- Read-audit integration checks cover authenticated listing, successful CSV/PDF exports, denied administrator-only reads, audit metadata without query/body content, and tenant-isolated audit results. Private-file checks verify download events and outcomes without recording filenames. Middleware tests verify that audit-storage failure blocks the read and handler exceptions still propagate while recording failure.
+- MVC HTTP tests cover invalid registration/sign-in/reset inputs, password confirmation, retention of safe input, clearing passwords/recovery/reset secrets, API password-policy feedback, separate confirmation/reset binding and antiforgery enforcement. Test HTTP transports substitute for real email/account delivery in these form tests.
+- Existing suite checks also passed for refresh/recovery, shared encrypted Redis sessions, project/task management, tenant isolation, PDF rendering and encrypted email-queue retry behaviour. This is combined local test evidence, not proof of every browser workflow or production service.
+- The web project started locally. Browser checks confirmed inline required-field errors, password-confirmation controls, separate recovery forms and no horizontal overflow at the current viewport. Password/account creation was not performed in that browser check. No full browser end-to-end onboarding or real SMTP delivery was verified.
+- Authentication-lifecycle audit coverage, retention/tamper protection, shared file storage/reconciliation/content inspection and production deployment verification remain outstanding.
+
+## Historical initial implementation checks
 
 - `dotnet restore SiteLedger.sln`: succeeded after network access was enabled.
 - `dotnet build SiteLedger.sln -warnaserror -m:1`: succeeded with zero warnings and errors.
@@ -46,6 +57,6 @@ Once these components are implemented, run `docker compose config`, `docker comp
 - `dotnet test src/SiteLedger.Tests/SiteLedger.Tests.csproj --no-restore`: 18 tests passed with Docker-backed MySQL. An in-process MVC-to-API integration path tests sign-in, antiforgery rejection, project creation, task creation and rendered pages. Additional API assertions cover dashboard project counts, cross-tenant empty results and report/expense CSV downloads.
 - The home and registration pages were previewed locally. Real SMTP delivery, multi-instance deployment, browser-based verification of every form, role-aware action visibility and a complete security review remain outstanding.
 
-## Pending changes (2026-11-01)
+## Historical publication note (2026-11-01)
 
 PDF report export, encrypted email outbox/retries, broader workflow audit and MVC task-management controls are implemented in source with additional tests. The combined build, migration and tests for this snapshot were not run before publication, following the stop-and-push instruction. Earlier passing results do not verify this snapshot.

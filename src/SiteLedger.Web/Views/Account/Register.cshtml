@@ -1,2 +1,24 @@
+@model RegistrationForm
 @{ ViewData["Title"] = "Create account"; }
-<section class="auth"><p class="eyebrow">GET STARTED</p><h1>Create your workspace</h1><p class="muted">Register your company and confirm your email to sign in.</p><div asp-validation-summary="All" class="error" role="alert"></div><form method="post"><label>Full name <input name="fullName" maxlength="200" required autocomplete="name" /></label><label>Company name <input name="companyName" maxlength="200" required /></label><label>Email <input name="email" type="email" maxlength="256" required autocomplete="email" /></label><label>Password <input name="password" type="password" required autocomplete="new-password" /></label><button class="button" type="submit">Create account</button></form><p>Invited to a workspace? <a asp-controller="People" asp-action="Accept">Accept an invitation</a></p><p>Already registered? <a asp-action="Login">Sign in</a></p></section>
+<section class="auth">
+    <p class="eyebrow">GET STARTED</p><h1>Create your workspace</h1>
+    <p class="muted">Register your company and confirm your email to sign in.</p>
+    <div asp-validation-summary="All" class="error" role="alert"></div>
+    <form method="post">
+        <label asp-for="FullName"></label><input asp-for="FullName" maxlength="200" required autocomplete="name" />
+        <span asp-validation-for="FullName" class="error"></span>
+        <label asp-for="CompanyName"></label><input asp-for="CompanyName" maxlength="200" required />
+        <span asp-validation-for="CompanyName" class="error"></span>
+        <label asp-for="Email"></label><input asp-for="Email" maxlength="256" required autocomplete="email" />
+        <span asp-validation-for="Email" class="error"></span>
+        <label asp-for="Password"></label><input asp-for="Password" maxlength="256" required autocomplete="new-password" aria-describedby="password-help" />
+        <small id="password-help">Use at least six characters with uppercase, lowercase, a number and a symbol.</small>
+        <span asp-validation-for="Password" class="error"></span>
+        <label asp-for="ConfirmPassword"></label><input asp-for="ConfirmPassword" maxlength="256" required autocomplete="new-password" />
+        <span asp-validation-for="ConfirmPassword" class="error"></span>
+        <button class="button" type="submit">Create account</button>
+    </form>
+    <p>Invited to a workspace? <a asp-controller="People" asp-action="Accept">Accept an invitation</a></p>
+    <p>Already registered? <a asp-action="Login">Sign in</a></p>
+</section>
+@section Scripts { <partial name="_ValidationScriptsPartial" /> }

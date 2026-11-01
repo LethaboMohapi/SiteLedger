@@ -1,2 +1,30 @@
+@model RecoveryPage
 @{ ViewData["Title"] = "Account recovery"; }
-<section class="auth"><p class="eyebrow">ACCOUNT HELP</p><h1>Recover access</h1><p class="muted">Request a password reset token or another confirmation email.</p><div asp-validation-summary="All" class="error" role="alert"></div><form asp-action="Recovery" method="post"><label>Email <input name="email" type="email" required /></label><div class="actions"><button class="button" name="actionType" value="reset">Send reset token</button><button class="button secondary" name="actionType" value="confirm">Resend confirmation</button></div></form><hr /><h2>Use a reset token</h2><form asp-action="Reset" method="post"><label>Email <input name="email" type="email" required /></label><label>Reset token <input name="token" required /></label><label>New password <input name="password" type="password" autocomplete="new-password" required /></label><button class="button">Reset password</button></form></section>
+<section class="auth">
+    <p class="eyebrow">ACCOUNT HELP</p><h1>Recover access</h1>
+    <p class="muted">Request a password reset token or another confirmation email.</p>
+    <div asp-validation-summary="All" class="error" role="alert"></div>
+    <form asp-action="Recovery" method="post">
+        <label asp-for="Request.Email"></label><input asp-for="Request.Email" autocomplete="email" maxlength="256" required />
+        <span asp-validation-for="Request.Email" class="error"></span>
+        <div class="actions">
+            <button class="button" name="Request.ActionType" value="reset">Send reset token</button>
+            <button class="button secondary" name="Request.ActionType" value="confirm">Resend confirmation</button>
+        </div>
+    </form>
+    <hr /><h2>Use a reset token</h2>
+    <form asp-action="Reset" method="post">
+        <label asp-for="Reset.Email"></label><input asp-for="Reset.Email" autocomplete="email" maxlength="256" required />
+        <span asp-validation-for="Reset.Email" class="error"></span>
+        <label asp-for="Reset.Token"></label><input asp-for="Reset.Token" autocomplete="off" maxlength="4096" required aria-describedby="token-help" />
+        <small id="token-help">Paste the token from your reset email. Request another token if it has expired.</small>
+        <span asp-validation-for="Reset.Token" class="error"></span>
+        <label asp-for="Reset.Password"></label><input asp-for="Reset.Password" autocomplete="new-password" maxlength="256" required aria-describedby="password-help" />
+        <small id="password-help">Use at least six characters with uppercase, lowercase, a number and a symbol.</small>
+        <span asp-validation-for="Reset.Password" class="error"></span>
+        <label asp-for="Reset.ConfirmPassword"></label><input asp-for="Reset.ConfirmPassword" autocomplete="new-password" maxlength="256" required />
+        <span asp-validation-for="Reset.ConfirmPassword" class="error"></span>
+        <button class="button">Reset password</button>
+    </form>
+</section>
+@section Scripts { <partial name="_ValidationScriptsPartial" /> }

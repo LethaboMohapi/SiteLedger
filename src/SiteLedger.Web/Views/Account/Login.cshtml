@@ -1,2 +1,22 @@
+@model LoginForm
 @{ ViewData["Title"] = "Sign in"; }
-<section class="auth"><p class="eyebrow">WELCOME BACK</p><h1>Sign in</h1><p class="muted">Continue to your project workspace.</p><div asp-validation-summary="All" class="error" role="alert"></div><form method="post"><label>Email <input type="email" name="email" required autocomplete="username" /></label><label>Password <input type="password" name="password" required autocomplete="current-password" /></label><label>Authenticator code <input name="authenticatorCode" inputmode="numeric" autocomplete="one-time-code" /><small>Enter a code if two-factor authentication is enabled.</small></label><label>Recovery code <input name="recoveryCode" autocomplete="off" /><small>Use a recovery code if you cannot access your authenticator.</small></label><button class="button" type="submit">Sign in</button></form><p><a asp-action="Recovery">Need help signing in?</a> · <a asp-action="Register">Create an account</a></p></section>
+<section class="auth">
+    <p class="eyebrow">WELCOME BACK</p><h1>Sign in</h1>
+    <p class="muted">Continue to your project workspace.</p>
+    <div asp-validation-summary="All" class="error" role="alert"></div>
+    <form method="post">
+        <label asp-for="Email"></label><input asp-for="Email" autocomplete="username" required maxlength="256" />
+        <span asp-validation-for="Email" class="error"></span>
+        <label asp-for="Password"></label><input asp-for="Password" autocomplete="current-password" required maxlength="256" />
+        <span asp-validation-for="Password" class="error"></span>
+        <label asp-for="AuthenticatorCode"></label><input asp-for="AuthenticatorCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" aria-describedby="authenticator-help" />
+        <small id="authenticator-help">Enter six digits if two-factor authentication is enabled.</small>
+        <span asp-validation-for="AuthenticatorCode" class="error"></span>
+        <label asp-for="RecoveryCode"></label><input asp-for="RecoveryCode" autocomplete="off" maxlength="64" aria-describedby="recovery-help" />
+        <small id="recovery-help">Use a recovery code if you cannot access your authenticator.</small>
+        <span asp-validation-for="RecoveryCode" class="error"></span>
+        <button class="button" type="submit">Sign in</button>
+    </form>
+    <p><a asp-action="Recovery">Need help signing in?</a> · <a asp-action="Register">Create an account</a></p>
+</section>
+@section Scripts { <partial name="_ValidationScriptsPartial" /> }

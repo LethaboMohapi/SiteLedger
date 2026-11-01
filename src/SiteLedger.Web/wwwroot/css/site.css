@@ -86,3 +86,7 @@ fieldset, details { border-radius: 0; }
   .heading { flex-direction: column; }
   .hero-card-content { padding: 24px; }
 }
+
+.field-validation-error { display: block; margin: 6px 0 14px; }
+.input-validation-error { border-color: #a12f25; border-width: 2px; }
+.validation-summary-valid { display: none; }

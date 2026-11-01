@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using SiteLedger.Api.Auth;
+using SiteLedger.Api.Auditing;
 using SiteLedger.Api.Projects;
 using SiteLedger.Core;
 using SiteLedger.Infrastructure;
@@ -51,6 +52,7 @@ builder.Services.AddScoped<IAccountEmailTransport, SmtpAccountEmailSender>();
 builder.Services.AddScoped<IAccountEmailSender, OutboxAccountEmailSender>();
 builder.Services.AddHostedService<EmailOutboxDispatcher>();
 builder.Services.AddScoped<IProjectService, ProjectService>();
+builder.Services.AddScoped<IReadAccessAuditWriter, ReadAccessAuditWriter>();
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -103,8 +105,10 @@ builder.Services.AddSwaggerGen();
 var app = builder.Build();
 if (app.Environment.IsDevelopment()) { app.UseSwagger(); app.UseSwaggerUI(); }
 app.UseHttpsRedirection();
+app.UseRouting();
 app.UseRateLimiter();
 app.UseAuthentication();
+app.UseMiddleware<ReadAccessAuditMiddleware>();
 app.UseAuthorization();
 app.MapControllers();
 if (args.Contains("--migrate", StringComparer.Ordinal))

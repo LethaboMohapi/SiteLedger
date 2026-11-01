@@ -24,6 +24,8 @@ SiteLedger is an **unfinished** C# / ASP.NET Core and MySQL foundation for manag
 - Domain rules for plan limits, permissions and approval transitions; MySQL schema migrations; and automated tests.
 - Site-report PDF downloads, encrypted durable email delivery with retry backoff, workflow audit events, an administrator audit page and MVC assignment/deletion controls.
 - Report and expense submission/review email notifications to eligible tenant users.
+- Tenant-scoped auditing of authenticated API reads, CSV/PDF exports and private downloads, including denied outcomes. An access attempt is persisted before the read executes; failed audit storage blocks the read with 503.
+- Validated MVC sign-in, registration and recovery forms with inline errors, password confirmation, safe-field preservation and secret clearing on failure.
 
 ### Project CSV export
 
@@ -53,14 +55,24 @@ Configure the API database, signing key and email settings first. Use HTTPS outs
 ## Still needed
 
 - Shared production file storage, crash reconciliation and cleanup, and malware/full-format inspection. The current private storage uses a local filesystem and signature checks.
-- Complete audit coverage for authentication and read/export events, audit retention and tamper protection, plus remaining notifications. Workflow email notifications are queued; production delivery remains unverified.
-- Further browser coverage and validation improvements beyond the current role-aware forms, assignment/deletion controls and authenticator recovery flow.
+- Authentication-lifecycle audit coverage, audit retention and tamper protection, plus remaining notifications. Authenticated API reads/exports/downloads now record attempts and outcomes; workflow email production delivery remains unverified.
+- Further browser coverage and validation improvements for project, task, report, expense, invitation and security forms beyond the current account-form validation and role-aware controls.
 - Production deployment configuration and verification of real SMTP delivery, persistent protected keys and secure shared token storage. See [deployment notes](docs/DEPLOYMENT.md) for the local Compose setup.
 - Broader tenant-isolation, end-to-end and security testing. Existing endpoints are not a substitute for a complete security review.
 
 ### Private files
 
 Set `Storage__Path` to an absolute private directory outside the web root. Uploads accept PDF, PNG and JPEG signatures, subject to plan quotas. Files are served as attachments. The current implementation uses local disk, does not scan for malware and does not reconcile files after a crash; it is not a shared production blob store.
+
+### Read and export auditing
+
+Authenticated controller GET/HEAD requests generate paired `read.started`/`read.completed`, `export.started`/`export.completed`, or `file.download.started`/`file.download.completed` events. The pair shares an API-request identifier. Entries record the server route template, method and completion status; they exclude URL/query values, request/response bodies and credentials. Denied project reads and exports are recorded within the caller's tenant. Reading the audit log is also audited. Anonymous requests and failed authentication are outside this feature's coverage.
+
+The started event must be committed before the endpoint runs. If that write fails, the response is 503 and the read does not execute. Completion writes have a bounded timeout; failures are logged at critical severity and the earlier started event remains. A process crash can leave an unmatched started event. Streaming completion describes server processing, not proof that the client saved every byte. Retention, external tamper-resistant storage and authentication-lifecycle auditing remain outstanding.
+
+### Account-form validation
+
+Registration and password reset require matching password confirmation. Account forms validate required fields, lengths, email addresses and authenticator-code format on the server; local validation scripts provide corresponding client feedback. Invalid forms render inline errors and retain safe fields while clearing passwords, reset tokens and recovery codes. API password-policy messages are displayed without rendering raw response bodies. Confirmation resend and password reset use separate validated form models. Other management forms still need broader validation and browser coverage.
 
 ## Build and test
 

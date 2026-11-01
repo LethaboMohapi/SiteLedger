@@ -44,7 +44,7 @@ public sealed class AuditIntegrationTests
             {
                 var db = scope.ServiceProvider.GetRequiredService<SiteLedgerDbContext>();
                 await db.Database.MigrateAsync();
-                var tenantA = new Tenant { CompanyName = "A", Slug = "a" };
+                var tenantA = new Tenant { CompanyName = "A", Slug = "a", Plan = Plan.Pro };
                 var tenantB = new Tenant { CompanyName = "B", Slug = "b" };
                 db.Tenants.AddRange(tenantA, tenantB); await db.SaveChangesAsync();
                 var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
@@ -83,16 +83,27 @@ public sealed class AuditIntegrationTests
             Assert.Equal(HttpStatusCode.OK, (await a.PostAsync($"/api/v1/projects/{projectId}/expenses/{expenseId}/submit", null)).StatusCode);
             Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/api/v1/audit")).StatusCode);
             Assert.Equal(HttpStatusCode.Forbidden, (await manager.GetAsync("/api/v1/audit")).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await a.GetAsync("/api/v1/projects?privateQuery=DoNotRecordThis")).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await a.GetAsync("/api/v1/exports/projects.csv")).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await a.GetAsync($"/api/v1/exports/projects/{projectId}/reports/{reportId}.pdf")).StatusCode);
             var response = await a.GetAsync("/api/v1/audit?page=1&pageSize=100");
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
             var raw = await response.Content.ReadAsStringAsync();
             Assert.DoesNotContain("Sensitive work summary", raw);
+            Assert.DoesNotContain("DoNotRecordThis", raw);
             var events = JsonSerializer.Deserialize<JsonElement[]>(raw)!;
             var actions = events.Select(e => e.GetProperty("action").GetString()).ToArray();
             Assert.Contains("project.create", actions); Assert.Contains("report.create", actions);
             Assert.Contains("report.submit", actions); Assert.Contains("expense.create", actions); Assert.Contains("expense.submit", actions);
-            Assert.Empty((await b.GetFromJsonAsync<JsonElement[]>("/api/v1/audit"))!);
+            Assert.Contains("read.started", actions); Assert.Contains("read.completed", actions);
+            Assert.Equal(2, actions.Count(x => x == "export.completed"));
+            Assert.Contains(events, e => e.GetProperty("action").GetString() == "read.completed" &&
+                JsonDocument.Parse(e.GetProperty("details").GetString()!).RootElement.GetProperty("StatusCode").GetInt32() == 403);
+            var otherEvents = (await b.GetFromJsonAsync<JsonElement[]>("/api/v1/audit"))!;
+            // Reading the audit log is itself audited, but no tenant A workflow leaks into B.
+            Assert.NotEmpty(otherEvents);
+            Assert.All(otherEvents, e => Assert.StartsWith("read.", e.GetProperty("action").GetString()));
             Assert.Equal(HttpStatusCode.BadRequest, (await a.GetAsync("/api/v1/audit?pageSize=101")).StatusCode);
         }
         finally { foreach (var item in previous) Environment.SetEnvironmentVariable(item.Key, item.Value); }

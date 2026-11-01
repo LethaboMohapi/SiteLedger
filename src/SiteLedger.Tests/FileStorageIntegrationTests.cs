@@ -100,6 +100,10 @@ public sealed class FileStorageIntegrationTests
             {
                 var db = scope.ServiceProvider.GetRequiredService<SiteLedgerDbContext>();
                 Assert.Equal(0, (await db.Tenants.SingleAsync(t => t.Id == tenantA)).StorageUsedBytes);
+                var downloads = await db.AuditLogs.IgnoreQueryFilters().Where(x => x.TenantId == tenantA && x.Action == "file.download.completed").ToListAsync();
+                Assert.Equal(4, downloads.Count);
+                Assert.All(downloads, item => Assert.DoesNotContain("sensitive.pdf", item.Details));
+                Assert.Equal(2, downloads.Count(item => JsonDocument.Parse(item.Details).RootElement.GetProperty("StatusCode").GetInt32() == 200));
             }
         }
         finally
