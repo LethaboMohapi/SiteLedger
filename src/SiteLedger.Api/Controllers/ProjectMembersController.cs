@@ -1,3 +1,4 @@
+using SiteLedger.Api.Projects;
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -29,6 +30,7 @@ public sealed class ProjectMembersController(SiteLedgerDbContext db, ICurrentTen
     [HttpPut]
     public async Task<IActionResult> AddOrRestore(Guid projectId, ProjectMemberInput input, CancellationToken ct)
     {
+        await using var projectWrite = await ProjectWriteLease.Begin(db, current.TenantId!.Value, ct);
         var tenantId = current.TenantId!.Value;
         if (!await db.Projects.AnyAsync(p => p.Id == projectId, ct)) return NotFound();
         if (string.IsNullOrWhiteSpace(input.UserId) || string.IsNullOrWhiteSpace(input.RoleOnProject)) return BadRequest();
@@ -43,7 +45,7 @@ public sealed class ProjectMembersController(SiteLedgerDbContext db, ICurrentTen
         }
         else { member.IsDeleted = false; member.RoleOnProject = input.RoleOnProject.Trim(); }
         db.AuditLogs.Add(new AuditLog { Action = "project.member.put", EntityType = "Project", EntityId = projectId, UserId = current.UserId!, Timestamp = DateTimeOffset.UtcNow, Details = System.Text.Json.JsonSerializer.Serialize(new { input.UserId }) });
-        try { await db.SaveChangesAsync(ct); return Ok(new { member.UserId, member.RoleOnProject }); }
+        try { await db.SaveChangesAsync(ct); await projectWrite.CommitAsync(ct); return Ok(new { member.UserId, member.RoleOnProject }); }
         catch (DbUpdateConcurrencyException) { return Conflict(new { error = "Membership changed; reload and retry." }); }
     }
 

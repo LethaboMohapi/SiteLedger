@@ -9,7 +9,7 @@ using SiteLedger.Web.Services;
 
 namespace SiteLedger.Web.Controllers;
 
-public sealed class AccountController(ApiClient api, IDistributedCache cache) : Controller
+public sealed class AccountController(ApiClient api, WebSessions sessions) : Controller
 {
     [HttpGet] public IActionResult Login() => View();
     [HttpPost] public async Task<IActionResult> Login(string email, string password, string? authenticatorCode, string? recoveryCode)
@@ -23,19 +23,20 @@ public sealed class AccountController(ApiClient api, IDistributedCache cache) : 
         if (!identityResponse.IsSuccessStatusCode) { ModelState.AddModelError("", "Your account could not be verified. Try again."); return View(); }
         var account = await identityResponse.Content.ReadFromJsonAsync<JsonElement>();
         var key = "access:" + Guid.NewGuid().ToString("N");
-        await cache.SetStringAsync(key, token, new DistributedCacheEntryOptions { AbsoluteExpiration = expires });
+        var absoluteExpiry = DateTimeOffset.UtcNow.AddDays(14);
+        await sessions.Store(key, new WebSession(token, expires, result.GetProperty("refreshToken").GetString()!, absoluteExpiry));
         var claims = new List<Claim> { new(ClaimTypes.Name, email), new("token_key", key) };
         if (account.TryGetProperty("userId", out var userId) && userId.GetString() is string id) claims.Add(new Claim(ClaimTypes.NameIdentifier, id));
         foreach (var role in account.GetProperty("roles").EnumerateArray())
             if (role.GetString() is string name) claims.Add(new Claim(ClaimTypes.Role, name));
         var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
-        await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity), new AuthenticationProperties { ExpiresUtc = expires, IsPersistent = false });
+        await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity), new AuthenticationProperties { ExpiresUtc = absoluteExpiry, IsPersistent = false });
         return RedirectToAction("Index", "Projects");
     }
     [HttpPost] public async Task<IActionResult> Logout()
     {
         var key = User.FindFirstValue("token_key");
-        if (key is not null) await cache.RemoveAsync(key);
+        if (key is not null && !await api.Revoke(key)) TempData["Message"] = "Signed out locally. Remote session revocation could not be confirmed.";
         await HttpContext.SignOutAsync();
         return RedirectToAction("Index", "Home");
     }
@@ -63,10 +64,10 @@ public sealed class AccountController(ApiClient api, IDistributedCache cache) : 
         return RedirectToAction(response.IsSuccessStatusCode ? nameof(Login) : nameof(Recovery));
     }
     [Authorize, HttpGet] public IActionResult Security() => View();
-    [Authorize, HttpPost] public async Task<IActionResult> Security(string email, string password, string? code, string operation)
+    [Authorize, HttpPost] public async Task<IActionResult> Security(string email, string password, string? code, string operation, string? recoveryCode)
     {
         if (operation is not ("setup" or "enable" or "disable" or "recovery-codes")) return BadRequest();
-        var body = operation == "setup" ? (object)new { email, password } : new { email, password, code };
+        var body = operation == "setup" ? (object)new { email, password } : new { email, password, code, recoveryCode };
         using var response = await api.Send(HttpMethod.Post, $"api/v1/auth/authenticator/{operation}", body, false);
         if (!response.IsSuccessStatusCode) { ModelState.AddModelError("", "Could not update authenticator settings. Check your password and code."); return View(); }
         if (operation == "recovery-codes")
@@ -84,7 +85,7 @@ public sealed class AccountController(ApiClient api, IDistributedCache cache) : 
             return View();
         }
         var key = User.FindFirstValue("token_key");
-        if (key is not null) await cache.RemoveAsync(key);
+        if (key is not null && !await api.Revoke(key)) TempData["Message"] = "Signed out locally. Remote session revocation could not be confirmed.";
         await HttpContext.SignOutAsync();
         TempData["Message"] = "Authenticator settings updated. Sign in again.";
         return RedirectToAction(nameof(Login));

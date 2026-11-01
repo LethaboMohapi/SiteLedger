@@ -123,4 +123,11 @@ public sealed class ProjectsController(ApiClient api) : Controller
         return RedirectToAction(nameof(Detail), new { id });
     }
 
+    [HttpPost] public async Task<IActionResult> DeleteProject(Guid id, Guid version)
+    {
+        using var response = await api.Send(HttpMethod.Delete, $"api/v1/projects/{id}?version={version}");
+        TempData["Message"] = response.IsSuccessStatusCode ? "Project removed." : "Project could not be removed. Refresh and remove eligible records and files first; submitted or approved records are retained.";
+        return RedirectToAction(nameof(Index));
+    }
+
 }

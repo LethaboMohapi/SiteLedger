@@ -1,3 +1,4 @@
+using SiteLedger.Api.Projects;
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -45,13 +46,14 @@ public sealed class ProjectTasksController(SiteLedgerDbContext db, ICurrentTenan
     [Authorize(Policy = Permissions.ManageProjects)]
     public async Task<IActionResult> Create(Guid projectId, TaskInput input, CancellationToken ct)
     {
+        await using var projectWrite = await ProjectWriteLease.Begin(db, current.TenantId!.Value, ct);
         if (!await CanAccess(projectId, ct)) return NotFound();
         if (!Valid(input)) return BadRequest();
         var task = new ProjectTask { ProjectId = projectId, Title = input.Title.Trim(), Description = input.Description?.Trim() ?? "", DueDate = input.DueDate,
             Priority = input.Priority, Status = input.Status, PercentComplete = input.PercentComplete };
         db.ProjectTasks.Add(task);
         AuditEvents.Add(db, current, "task.create", nameof(ProjectTask), task.Id);
-        await db.SaveChangesAsync(ct);
+        await db.SaveChangesAsync(ct); await projectWrite.CommitAsync(ct);
         return StatusCode(201, task);
     }
 

@@ -29,6 +29,8 @@ else if (builder.Environment.IsDevelopment()) builder.Services.AddDistributedMem
 else throw new InvalidOperationException("ConnectionStrings:Redis is required outside development.");
 builder.Services.AddHttpClient<ApiClient>(client => { client.BaseAddress = apiUri; client.Timeout = TimeSpan.FromSeconds(30); });
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<SessionCoordinator>();
+builder.Services.AddSingleton<WebSessions>();
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(options =>
 {
     options.LoginPath = "/Account/Login";
@@ -39,7 +41,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
 });
 builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options => options.MultipartBodyLengthLimit = 106954752);
 builder.Services.AddAuthorization();
-builder.Services.AddControllersWithViews(options => options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute()));
+builder.Services.AddControllersWithViews(options => { options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute()); options.Filters.Add<ValidateForm>(); });
 var app = builder.Build();
 if (!app.Environment.IsDevelopment()) { app.UseExceptionHandler("/Home/Error"); app.UseHsts(); }
 app.UseHttpsRedirection();

@@ -13,7 +13,7 @@ docker compose run --rm api --migrate
 docker compose up --build -d api web
 ```
 
-Open `http://localhost:5177`. Ports are bound to loopback. The migration command applies pending EF migrations; back up an existing database before applying them. Compose retains database, data-protection keys and file volumes when containers are stopped. The Redis development container has no durable volume; a Redis restart signs users out because server-side tokens are lost.
+Open `http://localhost:5177`. Ports are bound to loopback. The migration command applies pending EF migrations; back up an existing database before applying them. Compose retains database, data-protection keys and file volumes when containers are stopped. The Redis development container has no durable volume; a Redis restart signs users out because server-side sessions are lost. Sessions are encrypted with the MVC data-protection key ring. Multiple MVC instances must share both Redis and that protected key ring; refresh and logout operations use Redis leases to serialize changes to a session. API request timeouts are bounded below the lease duration. Network partitions can force sign-in again; no availability guarantee is made.
 
 Registration requires working email and an externally accessible HTTPS API origin. Configure `SITELEDGER_PUBLIC_API_URL`, `SITELEDGER_SMTP_HOST`, `SITELEDGER_SMTP_PORT`, `SITELEDGER_SMTP_FROM`, and, when required, `SITELEDGER_SMTP_USERNAME` and `SITELEDGER_SMTP_PASSWORD`. SMTP uses TLS. No real email delivery or public callback has been verified for this setup.
 

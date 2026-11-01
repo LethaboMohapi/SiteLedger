@@ -19,10 +19,11 @@ SiteLedger is an **unfinished** C# / ASP.NET Core and MySQL foundation for manag
 - Project, report and expense CSV exports for Pro and Enterprise tenants. Tenant administrators can export all tenant projects; managers export only projects they belong to. The exports escape spreadsheet formula prefixes.
 - A dashboard showing visible projects, active projects, open tasks and approved expenses.
 - An ASP.NET Core MVC interface for registration, confirmation resend, password recovery, sign-in, authenticator setup, projects, tasks, reports, expenses, memberships and CSV downloads.
-- API invitations, tenant user and role administration, task assignment and version-checked task and eligible draft-record deletion. Project deletion is deliberately disabled pending concurrency safeguards.
+- API invitations, tenant user and role administration, task assignment and version-checked task and eligible draft-record deletion. Eligible projects can be soft-deleted under the same write lock used by child creation; projects containing reports, expenses or files are retained until those records can be removed safely.
 - Private local file uploads and downloads, with project access checks, quotas and viewer-sharing controls.
 - Domain rules for plan limits, permissions and approval transitions; MySQL schema migrations; and automated tests.
-- Pending verification: site-report PDF downloads, encrypted durable email delivery with retry backoff, broader project/report/expense/task audit events, an administrator audit page, and MVC assignment/deletion controls. These changes have not yet passed a combined build and test run.
+- Site-report PDF downloads, encrypted durable email delivery with retry backoff, workflow audit events, an administrator audit page and MVC assignment/deletion controls.
+- Report and expense submission/review email notifications to eligible tenant users.
 
 ### Project CSV export
 
@@ -32,15 +33,15 @@ SiteLedger is an **unfinished** C# / ASP.NET Core and MySQL foundation for manag
 
 Set `Account__PublicBaseUrl` to the externally accessible HTTPS API origin and configure `Email__SmtpHost`, `Email__SmtpPort` (default 587), `Email__From`, and, if needed, `Email__Username` and `Email__Password` using environment variables or a secret store. SMTP uses TLS. Migrate the database before starting the API. Do not commit credentials. Data-protection keys must be persisted and shared across instances or account tokens may stop working after a restart.
 
-`POST /api/v1/account/register` creates a free tenant and an unconfirmed administrator; the confirmation link is emailed. `POST /api/v1/account/confirmation/resend` resends it. `POST /api/v1/account/password/forgot` emails a reset token; submit it with the email address and new password to `POST /api/v1/account/password/reset`. These endpoints return generic responses for existing or missing accounts. Email is queued in MySQL with Data Protection-encrypted contents and retry backoff. The new queue requires the EmailOutbox migration and stable shared protection keys; its final combined verification is pending. The SMTP transport and real email delivery have not been end-to-end tested.
+`POST /api/v1/account/register` creates a free tenant and an unconfirmed administrator; the confirmation link is emailed. `POST /api/v1/account/confirmation/resend` resends it. `POST /api/v1/account/password/forgot` emails a reset token; submit it with the email address and new password to `POST /api/v1/account/password/reset`. These endpoints return generic responses for existing or missing accounts. Email is queued in MySQL with Data Protection-encrypted contents and retry backoff. The queue requires the EmailOutbox migration and stable shared protection keys. Queue tests use a substitute email transport; real SMTP delivery remains unverified. The SMTP transport and real email delivery have not been end-to-end tested.
 
 ### Authenticator API
 
-Existing confirmed users can request an authenticator key with `POST /api/v1/auth/authenticator/setup` (email and password), then verify a code at `POST /api/v1/auth/authenticator/enable` (email, password and code). Once enabled, include `authenticatorCode` with the password at `POST /api/v1/auth/login`. `POST /api/v1/auth/authenticator/disable` also requires email, password and a current code. These endpoints must be used over HTTPS. Enabling or disabling invalidates existing access tokens. Generate one-time recovery codes in the MVC security page or through `POST /api/v1/auth/authenticator/recovery-codes`; save them securely because they are shown only once. API clients can refresh at `POST /api/v1/auth/refresh` and revoke the token family at `POST /api/v1/auth/logout`. An issued access token remains valid until it expires or its security stamp changes.
+Existing confirmed users can request an authenticator key with `POST /api/v1/auth/authenticator/setup` (email and password), then verify a code at `POST /api/v1/auth/authenticator/enable` (email, password and code). Once enabled, include `authenticatorCode` with the password at `POST /api/v1/auth/login`. `POST /api/v1/auth/authenticator/disable` requires email, password and either a current authenticator code or an unused recovery code. These endpoints must be used over HTTPS. Enabling or disabling invalidates existing access tokens. Generate one-time recovery codes in the MVC security page or through `POST /api/v1/auth/authenticator/recovery-codes`; save them securely because they are shown only once. API clients can refresh at `POST /api/v1/auth/refresh` and revoke the token family at `POST /api/v1/auth/logout`. An issued access token remains valid until it expires or its security stamp changes.
 
 ### MVC interface
 
-Run the API and web projects separately. For local development the MVC project defaults to `http://localhost:5051/` for the API; set `SiteLedgerApi__BaseUrl` to the API HTTPS origin in production. The web app uses an HTTP-only protected authentication cookie and keeps access tokens server-side in an in-memory cache until they expire. The MVC client does not yet use API refresh tokens; sign-in is required again when its access token expires. An in-memory cache also signs users out after a restart. Redis-backed shared token caching and certificate-protected persistent data-protection keys are configurable; production still needs a secure shared deployment and verification. The API performs the final authorization checks; the interface does not yet hide every action a user cannot perform.
+Run the API and web projects separately. For local development the MVC project defaults to `http://localhost:5051/` for the API; set `SiteLedgerApi__BaseUrl` to the API HTTPS origin in production. The web app uses an HTTP-only protected authentication cookie and encrypted server-side session data. It rotates refresh tokens before access-token expiry and attempts API family revocation at logout. Session access is coordinated across instances using Redis; a temporary development cache also supports a single process. Losing the session cache signs users out. Sessions have a maximum 14-day lifetime. If the API is unreachable during logout, the user is signed out locally and told that remote revocation could not be confirmed. Redis-backed shared token caching and certificate-protected persistent data-protection keys are configurable; production still needs a secure shared deployment and verification. The API performs the final authorization checks; the interface does not yet hide every action a user cannot perform.
 
 ```sh
 dotnet run --project src/SiteLedger.Api
@@ -51,12 +52,9 @@ Configure the API database, signing key and email settings first. Use HTTPS outs
 
 ## Still needed
 
-- Automatic MVC refresh and logout revocation of its server-side refresh session.
-- Safe project deletion and verification of the new MVC task-assignment and eligible-record deletion controls.
 - Shared production file storage, crash reconciliation and cleanup, and malware/full-format inspection. The current private storage uses a local filesystem and signature checks.
-- Complete audit coverage for authentication and read/export events, audit retention and tamper protection, plus remaining notifications. The new email queue and expanded workflow audit need combined verification.
-- Verification of the new site-report PDF export, plus any additional PDF formats required.
-- Verification of the new role-aware MVC controls, plus more comprehensive validation and remaining recovery flows.
+- Complete audit coverage for authentication and read/export events, audit retention and tamper protection, plus remaining notifications. Workflow email notifications are queued; production delivery remains unverified.
+- Further browser coverage and validation improvements beyond the current role-aware forms, assignment/deletion controls and authenticator recovery flow.
 - Production deployment configuration and verification of real SMTP delivery, persistent protected keys and secure shared token storage. See [deployment notes](docs/DEPLOYMENT.md) for the local Compose setup.
 - Broader tenant-isolation, end-to-end and security testing. Existing endpoints are not a substitute for a complete security review.
 
@@ -82,6 +80,6 @@ The test suite creates temporary MySQL containers. API startup also requires a M
 
 Coded by Lethabo Mohapi
 
-### Pending change verification
+### Verification scope
 
-The latest PDF, email-outbox, audit and MVC changes were saved before the requested stop-and-push. Their dedicated tests have been added but have not been run together against the final code. Apply the new EmailOutbox migration before using the queue. Previously reported passing tests apply to the earlier code snapshot.
+See [verification](docs/VERIFICATION.md) for current build, migration, MySQL, Redis, PDF, email-queue and MVC test evidence. These checks do not establish production SMTP delivery, malware scanning, complete audit protection or an independent security review. Apply the EmailOutbox migration before using the queue.

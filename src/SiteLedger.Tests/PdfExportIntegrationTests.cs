@@ -24,7 +24,7 @@ public sealed class PdfExportIntegrationTests
         var pdf = PdfReportRenderer.Render(new Project { Name = "Roadworks", ClientName = "Client", SiteAddress = "Site" },
             new SiteReport { ReportDate = new DateOnly(2026, 1, 1), Weather = "Clear", WorkSummary = string.Join(" ", Enumerable.Repeat("Long section", 1600)), Issues = "None" });
         Assert.Equal("%PDF-", System.Text.Encoding.ASCII.GetString(pdf, 0, 5));
-        using var document = PdfReader.Open(new MemoryStream(pdf), PdfDocumentOpenMode.ReadOnly);
+        using var document = PdfReader.Open(new MemoryStream(pdf), PdfDocumentOpenMode.Import);
         Assert.True(document.PageCount > 1);
         Assert.Contains("Roboto", System.Text.Encoding.Latin1.GetString(pdf));
     }
@@ -95,7 +95,7 @@ public sealed class PdfExportIntegrationTests
             Assert.Equal(HttpStatusCode.OK, responsePdf.StatusCode);
             Assert.Equal("application/pdf", responsePdf.Content.Headers.ContentType?.MediaType);
             Assert.Equal("no-store", responsePdf.Headers.CacheControl?.ToString());
-            using var pdf = PdfReader.Open(new MemoryStream(await responsePdf.Content.ReadAsByteArrayAsync()), PdfDocumentOpenMode.ReadOnly);
+            using var pdf = PdfReader.Open(new MemoryStream(await responsePdf.Content.ReadAsByteArrayAsync()), PdfDocumentOpenMode.Import);
             Assert.Equal(1, pdf.PageCount);
         }
         finally { foreach (var pair in originals) Environment.SetEnvironmentVariable(pair.Key, pair.Value); }

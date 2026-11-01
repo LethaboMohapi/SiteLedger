@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.AspNetCore.DataProtection;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -194,6 +195,17 @@ public sealed class LoginIntegrationTests
         Assert.Equal(HttpStatusCode.NotFound, (await outsiderClient.GetAsync($"/api/v1/projects/{firstId}/tasks")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await reviewerClient.PostAsJsonAsync($"/api/v1/projects/{firstId}/reports/{reportId}/review", new { approve = true, comment = "Approved" })).StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, (await reviewerClient.PostAsJsonAsync($"/api/v1/projects/{firstId}/reports/{reportId}/review", new { approve = true, comment = "Again" })).StatusCode);
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SiteLedgerDbContext>();
+            var protector = scope.ServiceProvider.GetRequiredService<IDataProtectionProvider>().CreateProtector("SiteLedger.EmailOutbox.v1");
+            var queued = await db.EmailOutbox.AsNoTracking().Where(m => m.ProtectedPayload != null).ToListAsync();
+            var notifications = queued.Select(m => JsonSerializer.Deserialize<PendingEmail>(protector.Unprotect(m.ProtectedPayload!))!).ToArray();
+            Assert.Contains(notifications, m => m.Address == "reviewer@example.test" && m.Subject.Contains("submitted"));
+            Assert.Contains(notifications, m => m.Address == email && m.Subject.Contains("approved"));
+            Assert.DoesNotContain(notifications, m => m.Address == "outsider@example.test");
+        }
+
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/v1/projects/{Guid.NewGuid()}/reports")).StatusCode);
         var expenseResponse = await client.PostAsJsonAsync($"/api/v1/projects/{firstId}/expenses", new { expenseDate = "2026-01-02", category = 0, amount = 125.50m, supplier = "Supplier" });
         Assert.Equal(HttpStatusCode.Created, expenseResponse.StatusCode);

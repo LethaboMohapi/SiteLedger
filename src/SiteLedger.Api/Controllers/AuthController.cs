@@ -8,7 +8,7 @@ namespace SiteLedger.Api.Controllers;
 
 public sealed record LoginRequest([Required, EmailAddress, MaxLength(256)] string Email, [Required, MaxLength(256)] string Password, [MaxLength(20)] string? AuthenticatorCode = null, [MaxLength(64)] string? RecoveryCode = null);
 
-public sealed record AuthenticatorRequest([Required, EmailAddress, MaxLength(256)] string Email, [Required, MaxLength(256)] string Password, [Required, MaxLength(20)] string Code);
+public sealed record AuthenticatorRequest([Required, EmailAddress, MaxLength(256)] string Email, [Required, MaxLength(256)] string Password, [MaxLength(20)] string? Code = null, [MaxLength(64)] string? RecoveryCode = null);
 
 public sealed record RefreshRequest([Required, MaxLength(160)] string RefreshToken);
 
@@ -49,16 +49,16 @@ public sealed class AuthController(ILoginService login, AuthenticatorService aut
 
     [HttpPost("authenticator/enable")]
     public async Task<IActionResult> Enable(AuthenticatorRequest request, CancellationToken ct) =>
-        await authenticator.SetEnabled(request.Email, request.Password, request.Code, true, ct) ? NoContent() : Unauthorized();
+        await authenticator.SetEnabled(request.Email, request.Password, request.Code ?? "", true, ct) ? NoContent() : Unauthorized();
 
     [HttpPost("authenticator/disable")]
     public async Task<IActionResult> Disable(AuthenticatorRequest request, CancellationToken ct) =>
-        await authenticator.SetEnabled(request.Email, request.Password, request.Code, false, ct) ? NoContent() : Unauthorized();
+        await authenticator.SetEnabled(request.Email, request.Password, request.Code ?? "", false, ct, request.RecoveryCode) ? NoContent() : Unauthorized();
 
     [HttpPost("authenticator/recovery-codes")]
     public async Task<IActionResult> RecoveryCodes(AuthenticatorRequest request, CancellationToken ct)
     {
-        var codes = await authenticator.GenerateRecoveryCodes(request.Email, request.Password, request.Code, ct);
+        var codes = await authenticator.GenerateRecoveryCodes(request.Email, request.Password, request.Code ?? "", ct);
         if (codes is null) return Unauthorized();
         Response.Headers.CacheControl = "no-store";
         return Ok(new { codes });

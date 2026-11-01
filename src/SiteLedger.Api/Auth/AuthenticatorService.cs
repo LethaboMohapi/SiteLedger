@@ -34,11 +34,13 @@ public sealed class AuthenticatorService(UserManager<ApplicationUser> users, Sit
         return key;
     }
 
-    public async Task<bool> SetEnabled(string email, string password, string code, bool enabled, CancellationToken ct)
+    public async Task<bool> SetEnabled(string email, string password, string code, bool enabled, CancellationToken ct, string? recoveryCode = null)
     {
         var user = await VerifyPassword(email, password, ct);
-        if (user is null || user.TwoFactorEnabled == enabled || string.IsNullOrWhiteSpace(code)) return false;
-        var valid = await users.VerifyTwoFactorTokenAsync(user, Microsoft.AspNetCore.Identity.TokenOptions.DefaultAuthenticatorProvider, code.Replace(" ", "").Replace("-", ""));
+        if (user is null || user.TwoFactorEnabled == enabled) return false;
+        var valid = !string.IsNullOrWhiteSpace(code) && await users.VerifyTwoFactorTokenAsync(user, Microsoft.AspNetCore.Identity.TokenOptions.DefaultAuthenticatorProvider, code.Replace(" ", "").Replace("-", ""));
+        if (!valid && !enabled && !string.IsNullOrWhiteSpace(recoveryCode))
+            valid = (await users.RedeemTwoFactorRecoveryCodeAsync(user, HashRecoveryCode(recoveryCode))).Succeeded;
         if (!valid) { await users.AccessFailedAsync(user); return false; }
         if (!(await users.SetTwoFactorEnabledAsync(user, enabled)).Succeeded) return false;
         if (!(await users.UpdateSecurityStampAsync(user)).Succeeded) return false;

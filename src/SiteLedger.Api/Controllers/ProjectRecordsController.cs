@@ -1,3 +1,6 @@
+using Microsoft.AspNetCore.DataProtection;
+using SiteLedger.Api.Auth;
+using SiteLedger.Api.Projects;
 using SiteLedger.Api.Auditing;
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
@@ -18,7 +21,7 @@ public sealed record ReviewRequest(bool Approve, [Required, StringLength(2000)] 
 [ApiController]
 [Route("api/v1/projects/{projectId:guid}")]
 [Authorize(Policy = Permissions.ReadProjects)]
-public sealed class ProjectRecordsController(SiteLedgerDbContext db, ICurrentTenant current) : ControllerBase
+public sealed class ProjectRecordsController(SiteLedgerDbContext db, ICurrentTenant current, IDataProtectionProvider protection) : ControllerBase
 {
     private async Task<bool> CanAccess(Guid projectId, CancellationToken ct)
     {
@@ -39,13 +42,14 @@ public sealed class ProjectRecordsController(SiteLedgerDbContext db, ICurrentTen
     [Authorize(Policy = Permissions.CreateReport)]
     public async Task<IActionResult> CreateReport(Guid projectId, NewReport input, CancellationToken ct)
     {
+        await using var projectWrite = await ProjectWriteLease.Begin(db, current.TenantId!.Value, ct);
         if (!await CanAccess(projectId, ct)) return NotFound();
         if (input.ReportDate == default || string.IsNullOrWhiteSpace(input.Weather) || string.IsNullOrWhiteSpace(input.WorkSummary)) return BadRequest();
         var report = new SiteReport { ProjectId = projectId, CreatedByUserId = current.UserId!, ReportDate = input.ReportDate,
             Weather = input.Weather.Trim(), WorkersOnSite = input.WorkersOnSite, WorkSummary = input.WorkSummary.Trim(), Issues = input.Issues?.Trim() ?? "" };
         db.SiteReports.Add(report);
         AuditEvents.Add(db, current, "report.create", nameof(SiteReport), report.Id);
-        await db.SaveChangesAsync(ct);
+        await db.SaveChangesAsync(ct); await projectWrite.CommitAsync(ct);
         return StatusCode(201, report);
     }
 
@@ -62,13 +66,14 @@ public sealed class ProjectRecordsController(SiteLedgerDbContext db, ICurrentTen
     [Authorize(Policy = Permissions.CreateReport)]
     public async Task<IActionResult> CreateExpense(Guid projectId, NewExpense input, CancellationToken ct)
     {
+        await using var projectWrite = await ProjectWriteLease.Begin(db, current.TenantId!.Value, ct);
         if (!await CanAccess(projectId, ct)) return NotFound();
         if (input.ExpenseDate == default || !Enum.IsDefined(input.Category) || input.Amount <= 0 || input.Amount > 9999999999999999.99m || decimal.Round(input.Amount, 2) != input.Amount || string.IsNullOrWhiteSpace(input.Supplier)) return BadRequest();
         var expense = new Expense { ProjectId = projectId, CreatedByUserId = current.UserId!, ExpenseDate = input.ExpenseDate,
             Category = input.Category, Amount = input.Amount, Supplier = input.Supplier.Trim() };
         db.Expenses.Add(expense);
         AuditEvents.Add(db, current, "expense.create", nameof(Expense), expense.Id);
-        await db.SaveChangesAsync(ct);
+        await db.SaveChangesAsync(ct); await projectWrite.CommitAsync(ct);
         return StatusCode(201, expense);
     }
 
@@ -115,7 +120,7 @@ public sealed class ProjectRecordsController(SiteLedgerDbContext db, ICurrentTen
         var item = await Find(kind, projectId, id, ct);
         if (item is null) return NotFound();
         if (item.CreatedByUserId != current.UserId) return Forbid();
-        try { item.Submit(); AuditEvents.Add(db, current, (kind == "reports" ? "report" : "expense") + ".submit", item is SiteReport ? nameof(SiteReport) : nameof(Expense), item.Id); await db.SaveChangesAsync(ct); return Ok(item); }
+        try { item.Submit(); await WorkflowNotifications.Queue(db, current, protection, item, true, ct); AuditEvents.Add(db, current, (kind == "reports" ? "report" : "expense") + ".submit", item is SiteReport ? nameof(SiteReport) : nameof(Expense), item.Id); await db.SaveChangesAsync(ct); return Ok(item); }
         catch (InvalidOperationException ex) { return Conflict(new { error = ex.Message }); }
         catch (DbUpdateConcurrencyException) { return Conflict(new { error = "The record changed. Reload and try again." }); }
     }
@@ -129,7 +134,7 @@ public sealed class ProjectRecordsController(SiteLedgerDbContext db, ICurrentTen
         if (item is null) return NotFound();
         if (item.CreatedByUserId == current.UserId) return Forbid();
         if (string.IsNullOrWhiteSpace(input.Comment)) return BadRequest();
-        try { item.Review(input.Approve, current.UserId!, input.Comment, DateTimeOffset.UtcNow); AuditEvents.Add(db, current, (kind == "reports" ? "report" : "expense") + (input.Approve ? ".approve" : ".reject"), item is SiteReport ? nameof(SiteReport) : nameof(Expense), item.Id); await db.SaveChangesAsync(ct); return Ok(item); }
+        try { item.Review(input.Approve, current.UserId!, input.Comment, DateTimeOffset.UtcNow); await WorkflowNotifications.Queue(db, current, protection, item, false, ct); AuditEvents.Add(db, current, (kind == "reports" ? "report" : "expense") + (input.Approve ? ".approve" : ".reject"), item is SiteReport ? nameof(SiteReport) : nameof(Expense), item.Id); await db.SaveChangesAsync(ct); return Ok(item); }
         catch (InvalidOperationException ex) { return Conflict(new { error = ex.Message }); }
         catch (DbUpdateConcurrencyException) { return Conflict(new { error = "The record changed. Reload and try again." }); }
     }

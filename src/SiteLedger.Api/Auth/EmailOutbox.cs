@@ -79,16 +79,18 @@ public sealed class EmailOutboxDispatcher(IServiceScopeFactory scopes, ILogger<E
             {
                 logger.LogWarning("Email delivery attempt failed: {ErrorType}", ex.GetType().Name);
                 var delay = TimeSpan.FromSeconds(Math.Min(3600, 30 * Math.Pow(2, Math.Min(message.Attempts - 1, 7))));
+                var retryAt = DateTimeOffset.UtcNow.Add(delay);
                 await db.EmailOutbox.Where(m => m.Id == candidate && m.LeaseId == leaseId).ExecuteUpdateAsync(set => set
-                    .SetProperty(m => m.NextAttemptAt, DateTimeOffset.UtcNow.Add(delay))
+                    .SetProperty(m => m.NextAttemptAt, retryAt)
                     .SetProperty(m => m.LeaseId, (Guid?)null).SetProperty(m => m.LeaseUntil, (DateTimeOffset?)null), ct);
             }
             catch (Exception ex) when (ex is CryptographicException or JsonException or InvalidDataException)
             {
                 // Preserve encrypted data for repair until expiry (e.g. key store temporarily unavailable).
                 logger.LogError("Queued email could not be decoded: {ErrorType}", ex.GetType().Name);
+                var retryAt = DateTimeOffset.UtcNow.AddMinutes(10);
                 await db.EmailOutbox.Where(m => m.Id == candidate && m.LeaseId == leaseId).ExecuteUpdateAsync(set => set
-                    .SetProperty(m => m.NextAttemptAt, DateTimeOffset.UtcNow.AddMinutes(10))
+                    .SetProperty(m => m.NextAttemptAt, retryAt)
                     .SetProperty(m => m.LeaseId, (Guid?)null).SetProperty(m => m.LeaseUntil, (DateTimeOffset?)null), ct);
             }
             return true;

@@ -53,9 +53,18 @@ public sealed class ProjectManagementController(SiteLedgerDbContext db, ICurrent
     {
         if (version == Guid.Empty) return BadRequest();
         if (!await CanAccess(projectId, ct)) return NotFound();
-        // Project writers currently do not all serialize their access checks with deletion.
-        // Refuse deletion until those paths share a transaction and lock.
-        return Conflict(new { error = "Project deletion is unavailable until concurrent record and file operations can be safely coordinated." });
+        await using var tx = await SiteLedger.Api.Projects.ProjectWriteLease.Begin(db, current.TenantId!.Value, ct);
+        if (!await CanAccess(projectId, ct)) return NotFound();
+        var project = await db.Projects.SingleAsync(p => p.Id == projectId, ct);
+        if (project.RowVersion != version) return Conflict(new { error = "Project changed. Reload and retry." });
+        if (await db.SiteReports.AnyAsync(r => r.ProjectId == projectId, ct) || await db.Expenses.AnyAsync(e => e.ProjectId == projectId, ct) || await db.FileAssets.AnyAsync(f => f.ProjectId == projectId, ct))
+            return Conflict(new { error = "Remove eligible records and files before deleting the project. Submitted or approved records are retained." });
+        db.ProjectTasks.RemoveRange(await db.ProjectTasks.Where(t => t.ProjectId == projectId).ToListAsync(ct));
+        db.ProjectMembers.RemoveRange(await db.ProjectMembers.Where(m => m.ProjectId == projectId).ToListAsync(ct));
+        db.Projects.Remove(project);
+        Audit("project.delete", nameof(Project), projectId);
+        try { await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return NoContent(); }
+        catch (DbUpdateConcurrencyException) { return Conflict(new { error = "Project changed. Reload and retry." }); }
     }
 
     private void Audit(string action, string type, Guid id) => db.AuditLogs.Add(new AuditLog { Action = action, EntityType = type, EntityId = id, UserId = current.UserId!, Timestamp = DateTimeOffset.UtcNow });

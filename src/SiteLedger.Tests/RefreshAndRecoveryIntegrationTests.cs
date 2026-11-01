@@ -70,7 +70,9 @@ public sealed class RefreshAndRecoveryIntegrationTests
             Assert.Equal(HttpStatusCode.NoContent, (await client.PostAsJsonAsync("/api/v1/auth/authenticator/enable", new { email, password, code = Totp(key) })).StatusCode);
             var recovery = await client.PostAsJsonAsync("/api/v1/auth/authenticator/recovery-codes", new { email, password, code = Totp(key) });
             Assert.Equal(HttpStatusCode.OK, recovery.StatusCode);
-            var code = (await recovery.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("codes")[0].GetString()!;
+            var recoveryCodes = (await recovery.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("codes");
+            var code = recoveryCodes[0].GetString()!;
+            var spare = recoveryCodes[1].GetString()!;
             var first = await client.PostAsJsonAsync("/api/v1/auth/login", new { email, password, recoveryCode = code });
             Assert.Equal(HttpStatusCode.OK, first.StatusCode);
             Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsJsonAsync("/api/v1/auth/login", new { email, password, recoveryCode = code })).StatusCode);
@@ -92,6 +94,8 @@ public sealed class RefreshAndRecoveryIntegrationTests
             Assert.NotNull(last.RefreshToken);
             Assert.Equal(HttpStatusCode.NoContent, (await second.PostAsJsonAsync("/api/v1/auth/logout", new { refreshToken = last.RefreshToken })).StatusCode);
             Assert.Equal(HttpStatusCode.Unauthorized, (await second.PostAsJsonAsync("/api/v1/auth/refresh", new { refreshToken = last.RefreshToken })).StatusCode);
+            Assert.Equal(HttpStatusCode.NoContent, (await second.PostAsJsonAsync("/api/v1/auth/authenticator/disable", new { email, password, recoveryCode = spare })).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await second.PostAsJsonAsync("/api/v1/auth/login", new { email, password })).StatusCode);
         }
         finally { foreach (var pair in old) Environment.SetEnvironmentVariable(pair.Key, pair.Value); }
     }

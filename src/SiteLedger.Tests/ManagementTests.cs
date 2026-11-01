@@ -49,8 +49,8 @@ public sealed class ManagementTests
         Assert.IsType<ConflictObjectResult>(await controller.DeleteProject(project.Id, project.RowVersion, default));
         var deleteRecords = new RecordDeletionController(db, current) { ControllerContext = Context(Roles.Manager) };
         Assert.IsType<NoContentResult>(await deleteRecords.Delete(project.Id, "expenses", expense.Id, expense.RowVersion, default));
-        Assert.IsType<ConflictObjectResult>(await controller.DeleteProject(project.Id, project.RowVersion, default));
-        Assert.NotEmpty(await db.Projects.ToListAsync());
+        Assert.IsType<NoContentResult>(await controller.DeleteProject(project.Id, project.RowVersion, default));
+        Assert.Empty(await db.Projects.ToListAsync());
         Assert.True(await db.AuditLogs.AnyAsync(x => x.Action == "task.delete"));
     }
 }

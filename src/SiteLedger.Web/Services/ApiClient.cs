@@ -7,8 +7,19 @@ using Microsoft.Extensions.Caching.Distributed;
 
 namespace SiteLedger.Web.Services;
 
-public sealed class ApiClient(HttpClient http, IHttpContextAccessor accessor, IDistributedCache cache)
+public sealed class ApiClient(HttpClient http, IHttpContextAccessor accessor, WebSessions sessions)
 {
+    private async Task<string?> Access(string key)
+    {
+        try { return await sessions.Access(key, http, accessor.HttpContext?.RequestAborted ?? default); }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or TimeoutException or StackExchange.Redis.RedisException) { return null; }
+    }
+    public async Task<bool> Revoke(string key)
+    {
+        try { return await sessions.Revoke(key, http, accessor.HttpContext?.RequestAborted ?? default); }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or TimeoutException or StackExchange.Redis.RedisException) { return false; }
+    }
+
     public async Task<HttpResponseMessage> Send(HttpMethod method, string path, object? body = null, bool authenticated = true)
     {
         using var request = new HttpRequestMessage(method, path);
@@ -16,7 +27,7 @@ public sealed class ApiClient(HttpClient http, IHttpContextAccessor accessor, ID
         if (authenticated)
         {
             var key = accessor.HttpContext?.User.FindFirstValue("token_key");
-            var token = key is null ? null : await cache.GetStringAsync(key);
+            var token = key is null ? null : await Access(key);
             if (token is null) return new HttpResponseMessage(HttpStatusCode.Unauthorized);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         }
@@ -37,7 +48,7 @@ public sealed class ApiClient(HttpClient http, IHttpContextAccessor accessor, ID
     public async Task<HttpResponseMessage> Upload(string path, IFormFile file, int category)
     {
         var key = accessor.HttpContext?.User.FindFirstValue("token_key");
-        var token = key is null ? null : await cache.GetStringAsync(key);
+        var token = key is null ? null : await Access(key);
         if (token is null) return new HttpResponseMessage(HttpStatusCode.Unauthorized);
         using var request = new HttpRequestMessage(HttpMethod.Post, path);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
