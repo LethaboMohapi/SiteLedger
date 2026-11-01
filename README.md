@@ -21,7 +21,8 @@ SiteLedger is an **unfinished** C# / ASP.NET Core and MySQL foundation for manag
 - An ASP.NET Core MVC interface for registration, confirmation resend, password recovery, sign-in, authenticator setup, projects, tasks, reports, expenses, memberships and CSV downloads.
 - API invitations, tenant user and role administration, task assignment and version-checked task and eligible draft-record deletion. Project deletion is deliberately disabled pending concurrency safeguards.
 - Private local file uploads and downloads, with project access checks, quotas and viewer-sharing controls.
-- Domain rules for plan limits, permissions and approval transitions; a MySQL schema migration; and automated tests.
+- Domain rules for plan limits, permissions and approval transitions; MySQL schema migrations; and automated tests.
+- Pending verification: site-report PDF downloads, encrypted durable email delivery with retry backoff, broader project/report/expense/task audit events, an administrator audit page, and MVC assignment/deletion controls. These changes have not yet passed a combined build and test run.
 
 ### Project CSV export
 
@@ -31,7 +32,7 @@ SiteLedger is an **unfinished** C# / ASP.NET Core and MySQL foundation for manag
 
 Set `Account__PublicBaseUrl` to the externally accessible HTTPS API origin and configure `Email__SmtpHost`, `Email__SmtpPort` (default 587), `Email__From`, and, if needed, `Email__Username` and `Email__Password` using environment variables or a secret store. SMTP uses TLS. Migrate the database before starting the API. Do not commit credentials. Data-protection keys must be persisted and shared across instances or account tokens may stop working after a restart.
 
-`POST /api/v1/account/register` creates a free tenant and an unconfirmed administrator; the confirmation link is emailed. `POST /api/v1/account/confirmation/resend` resends it. `POST /api/v1/account/password/forgot` emails a reset token; submit it with the email address and new password to `POST /api/v1/account/password/reset`. These endpoints return generic responses for existing or missing accounts. Delivery failures are logged and the user can request another email; there is no durable email queue yet. The SMTP transport and real email delivery have not been end-to-end tested.
+`POST /api/v1/account/register` creates a free tenant and an unconfirmed administrator; the confirmation link is emailed. `POST /api/v1/account/confirmation/resend` resends it. `POST /api/v1/account/password/forgot` emails a reset token; submit it with the email address and new password to `POST /api/v1/account/password/reset`. These endpoints return generic responses for existing or missing accounts. Email is queued in MySQL with Data Protection-encrypted contents and retry backoff. The new queue requires the EmailOutbox migration and stable shared protection keys; its final combined verification is pending. The SMTP transport and real email delivery have not been end-to-end tested.
 
 ### Authenticator API
 
@@ -51,11 +52,11 @@ Configure the API database, signing key and email settings first. Use HTTPS outs
 ## Still needed
 
 - Automatic MVC refresh and logout revocation of its server-side refresh session.
-- Safe project deletion, plus remaining management workflows and their MVC controls for task assignment and deletion.
+- Safe project deletion and verification of the new MVC task-assignment and eligible-record deletion controls.
 - Shared production file storage, crash reconciliation and cleanup, and malware/full-format inspection. The current private storage uses a local filesystem and signature checks.
-- Comprehensive audit logging and notifications, including a durable email queue and retries; the current audit covers only selected actions.
-- PDF exports.
-- MVC improvements including complete role-aware action visibility and more comprehensive validation and recovery flows.
+- Complete audit coverage for authentication and read/export events, audit retention and tamper protection, plus remaining notifications. The new email queue and expanded workflow audit need combined verification.
+- Verification of the new site-report PDF export, plus any additional PDF formats required.
+- Verification of the new role-aware MVC controls, plus more comprehensive validation and remaining recovery flows.
 - Production deployment configuration and verification of real SMTP delivery, persistent protected keys and secure shared token storage. See [deployment notes](docs/DEPLOYMENT.md) for the local Compose setup.
 - Broader tenant-isolation, end-to-end and security testing. Existing endpoints are not a substitute for a complete security review.
 
@@ -80,3 +81,7 @@ The test suite creates temporary MySQL containers. API startup also requires a M
 [MIT](LICENSE)
 
 Coded by Lethabo Mohapi
+
+### Pending change verification
+
+The latest PDF, email-outbox, audit and MVC changes were saved before the requested stop-and-push. Their dedicated tests have been added but have not been run together against the final code. Apply the new EmailOutbox migration before using the queue. Previously reported passing tests apply to the earlier code snapshot.

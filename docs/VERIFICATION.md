@@ -45,3 +45,7 @@ Once these components are implemented, run `docker compose config`, `docker comp
 
 - `dotnet test src/SiteLedger.Tests/SiteLedger.Tests.csproj --no-restore`: 18 tests passed with Docker-backed MySQL. An in-process MVC-to-API integration path tests sign-in, antiforgery rejection, project creation, task creation and rendered pages. Additional API assertions cover dashboard project counts, cross-tenant empty results and report/expense CSV downloads.
 - The home and registration pages were previewed locally. Real SMTP delivery, multi-instance deployment, browser-based verification of every form, role-aware action visibility and a complete security review remain outstanding.
+
+## Pending changes (2026-11-01)
+
+PDF report export, encrypted email outbox/retries, broader workflow audit and MVC task-management controls are implemented in source with additional tests. The combined build, migration and tests for this snapshot were not run before publication, following the stop-and-push instruction. Earlier passing results do not verify this snapshot.

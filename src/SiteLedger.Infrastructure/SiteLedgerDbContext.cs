@@ -26,10 +26,12 @@ public sealed class SiteLedgerDbContext(DbContextOptions<SiteLedgerDbContext> op
     public DbSet<Invitation> Invitations => Set<Invitation>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<EmailOutboxMessage> EmailOutbox => Set<EmailOutboxMessage>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
+        builder.Entity<EmailOutboxMessage>().HasIndex(x => new { x.DeliveredAt, x.AbandonedAt, x.NextAttemptAt });
         builder.Entity<Tenant>().HasIndex(x => x.Slug).IsUnique();
         builder.Entity<Tenant>().Property(x => x.CompanyName).HasMaxLength(200);
         builder.Entity<Tenant>().Property(x => x.Slug).HasMaxLength(100);

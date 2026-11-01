@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SiteLedger.Core;
+using SiteLedger.Api.Auditing;
 using SiteLedger.Infrastructure;
 using WorkStatus = SiteLedger.Core.TaskStatus;
 
@@ -27,6 +28,19 @@ public sealed class ProjectTasksController(SiteLedgerDbContext db, ICurrentTenan
         return Ok(await db.ProjectTasks.AsNoTracking().Where(t => t.ProjectId == projectId).OrderBy(t => t.DueDate).ThenBy(t => t.Id).Take(100).ToListAsync(ct));
     }
 
+    [HttpGet("assignees")]
+    [Authorize(Policy = Permissions.ManageProjects)]
+    public async Task<IActionResult> Assignees(Guid projectId, CancellationToken ct)
+    {
+        if (!await CanAccess(projectId, ct)) return NotFound();
+        var result = await (from member in db.ProjectMembers.AsNoTracking()
+                            join user in db.Users.AsNoTracking() on member.UserId equals user.Id
+                            where member.ProjectId == projectId && user.TenantId == current.TenantId && user.IsActive && user.EmailConfirmed
+                            orderby user.FullName, user.Id
+                            select new { user.Id, user.FullName }).ToListAsync(ct);
+        return Ok(result);
+    }
+
     [HttpPost]
     [Authorize(Policy = Permissions.ManageProjects)]
     public async Task<IActionResult> Create(Guid projectId, TaskInput input, CancellationToken ct)
@@ -36,6 +50,7 @@ public sealed class ProjectTasksController(SiteLedgerDbContext db, ICurrentTenan
         var task = new ProjectTask { ProjectId = projectId, Title = input.Title.Trim(), Description = input.Description?.Trim() ?? "", DueDate = input.DueDate,
             Priority = input.Priority, Status = input.Status, PercentComplete = input.PercentComplete };
         db.ProjectTasks.Add(task);
+        AuditEvents.Add(db, current, "task.create", nameof(ProjectTask), task.Id);
         await db.SaveChangesAsync(ct);
         return StatusCode(201, task);
     }
@@ -51,6 +66,7 @@ public sealed class ProjectTasksController(SiteLedgerDbContext db, ICurrentTenan
         if (task.RowVersion != version) return Conflict(new { error = "The task changed. Reload and try again." });
         task.Title = input.Title.Trim(); task.Description = input.Description?.Trim() ?? ""; task.DueDate = input.DueDate;
         task.Priority = input.Priority; task.Status = input.Status; task.PercentComplete = input.PercentComplete;
+        AuditEvents.Add(db, current, "task.update", nameof(ProjectTask), task.Id);
         try { await db.SaveChangesAsync(ct); return Ok(task); }
         catch (DbUpdateConcurrencyException) { return Conflict(new { error = "The task changed. Reload and try again." }); }
     }

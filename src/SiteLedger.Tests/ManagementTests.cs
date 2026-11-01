@@ -34,6 +34,11 @@ public sealed class ManagementTests
         db.ProjectMembers.AddRange(new ProjectMember { ProjectId = project.Id, UserId = "manager" }, new ProjectMember { ProjectId = project.Id, UserId = "member" });
         var expense = new Expense { ProjectId = project.Id, CreatedByUserId = "manager", Supplier = "S", Amount = 1, ExpenseDate = new DateOnly(2026, 1, 1) };
         db.Expenses.Add(expense); await db.SaveChangesAsync();
+        var taskController = new ProjectTasksController(db, current) { ControllerContext = Context(Roles.Manager) };
+        var listResult = Assert.IsType<OkObjectResult>(await taskController.Assignees(project.Id, default));
+        var json = System.Text.Json.JsonSerializer.Serialize(listResult.Value);
+        Assert.Contains("member", json);
+        Assert.DoesNotContain("other", json);
         var controller = new ProjectManagementController(db, current) { ControllerContext = Context(Roles.Manager) };
         Assert.IsType<NotFoundResult>(await controller.Assign(project.Id, task.Id, new AssignTaskRequest("other", task.RowVersion), default));
         var original = task.RowVersion;

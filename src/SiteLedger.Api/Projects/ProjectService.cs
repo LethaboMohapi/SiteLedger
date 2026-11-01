@@ -1,3 +1,4 @@
+using SiteLedger.Api.Auditing;
 using Microsoft.EntityFrameworkCore;
 using SiteLedger.Core;
 using SiteLedger.Infrastructure;
@@ -43,6 +44,7 @@ public sealed class ProjectService(SiteLedgerDbContext db, ICurrentTenant curren
             Budget = request.Budget, StartDate = request.StartDate, EndDate = request.EndDate, Status = request.Status };
         db.Projects.Add(project);
         db.ProjectMembers.Add(new ProjectMember { ProjectId = project.Id, UserId = userId, RoleOnProject = "Creator" });
+        AuditEvents.Add(db, current, "project.create", nameof(Project), project.Id);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return new ProjectView(project.Id, project.Name, project.ClientName, project.SiteAddress, project.Budget,

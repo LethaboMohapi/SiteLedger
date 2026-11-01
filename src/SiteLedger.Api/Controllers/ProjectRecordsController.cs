@@ -1,3 +1,4 @@
+using SiteLedger.Api.Auditing;
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -43,6 +44,7 @@ public sealed class ProjectRecordsController(SiteLedgerDbContext db, ICurrentTen
         var report = new SiteReport { ProjectId = projectId, CreatedByUserId = current.UserId!, ReportDate = input.ReportDate,
             Weather = input.Weather.Trim(), WorkersOnSite = input.WorkersOnSite, WorkSummary = input.WorkSummary.Trim(), Issues = input.Issues?.Trim() ?? "" };
         db.SiteReports.Add(report);
+        AuditEvents.Add(db, current, "report.create", nameof(SiteReport), report.Id);
         await db.SaveChangesAsync(ct);
         return StatusCode(201, report);
     }
@@ -65,6 +67,7 @@ public sealed class ProjectRecordsController(SiteLedgerDbContext db, ICurrentTen
         var expense = new Expense { ProjectId = projectId, CreatedByUserId = current.UserId!, ExpenseDate = input.ExpenseDate,
             Category = input.Category, Amount = input.Amount, Supplier = input.Supplier.Trim() };
         db.Expenses.Add(expense);
+        AuditEvents.Add(db, current, "expense.create", nameof(Expense), expense.Id);
         await db.SaveChangesAsync(ct);
         return StatusCode(201, expense);
     }
@@ -82,6 +85,7 @@ public sealed class ProjectRecordsController(SiteLedgerDbContext db, ICurrentTen
         if (item.RowVersion != version) return Conflict(new { error = "The record changed. Reload and try again." });
         item.ReportDate = input.ReportDate; item.Weather = input.Weather.Trim(); item.WorkersOnSite = input.WorkersOnSite;
         item.WorkSummary = input.WorkSummary.Trim(); item.Issues = input.Issues?.Trim() ?? "";
+        AuditEvents.Add(db, current, "report.update", nameof(SiteReport), item.Id);
         try { await db.SaveChangesAsync(ct); return Ok(item); }
         catch (DbUpdateConcurrencyException) { return Conflict(new { error = "The record changed. Reload and try again." }); }
     }
@@ -98,6 +102,7 @@ public sealed class ProjectRecordsController(SiteLedgerDbContext db, ICurrentTen
         if (version == Guid.Empty || input.ExpenseDate == default || !Enum.IsDefined(input.Category) || input.Amount <= 0 || input.Amount > 9999999999999999.99m || decimal.Round(input.Amount, 2) != input.Amount || string.IsNullOrWhiteSpace(input.Supplier)) return BadRequest();
         if (item.RowVersion != version) return Conflict(new { error = "The record changed. Reload and try again." });
         item.ExpenseDate = input.ExpenseDate; item.Category = input.Category; item.Amount = input.Amount; item.Supplier = input.Supplier.Trim();
+        AuditEvents.Add(db, current, "expense.update", nameof(Expense), item.Id);
         try { await db.SaveChangesAsync(ct); return Ok(item); }
         catch (DbUpdateConcurrencyException) { return Conflict(new { error = "The record changed. Reload and try again." }); }
     }
@@ -110,7 +115,7 @@ public sealed class ProjectRecordsController(SiteLedgerDbContext db, ICurrentTen
         var item = await Find(kind, projectId, id, ct);
         if (item is null) return NotFound();
         if (item.CreatedByUserId != current.UserId) return Forbid();
-        try { item.Submit(); await db.SaveChangesAsync(ct); return Ok(item); }
+        try { item.Submit(); AuditEvents.Add(db, current, (kind == "reports" ? "report" : "expense") + ".submit", item is SiteReport ? nameof(SiteReport) : nameof(Expense), item.Id); await db.SaveChangesAsync(ct); return Ok(item); }
         catch (InvalidOperationException ex) { return Conflict(new { error = ex.Message }); }
         catch (DbUpdateConcurrencyException) { return Conflict(new { error = "The record changed. Reload and try again." }); }
     }
@@ -124,7 +129,7 @@ public sealed class ProjectRecordsController(SiteLedgerDbContext db, ICurrentTen
         if (item is null) return NotFound();
         if (item.CreatedByUserId == current.UserId) return Forbid();
         if (string.IsNullOrWhiteSpace(input.Comment)) return BadRequest();
-        try { item.Review(input.Approve, current.UserId!, input.Comment, DateTimeOffset.UtcNow); await db.SaveChangesAsync(ct); return Ok(item); }
+        try { item.Review(input.Approve, current.UserId!, input.Comment, DateTimeOffset.UtcNow); AuditEvents.Add(db, current, (kind == "reports" ? "report" : "expense") + (input.Approve ? ".approve" : ".reject"), item is SiteReport ? nameof(SiteReport) : nameof(Expense), item.Id); await db.SaveChangesAsync(ct); return Ok(item); }
         catch (InvalidOperationException ex) { return Conflict(new { error = ex.Message }); }
         catch (DbUpdateConcurrencyException) { return Conflict(new { error = "The record changed. Reload and try again." }); }
     }

@@ -25,6 +25,7 @@ public sealed class AccountController(ApiClient api, IDistributedCache cache) : 
         var key = "access:" + Guid.NewGuid().ToString("N");
         await cache.SetStringAsync(key, token, new DistributedCacheEntryOptions { AbsoluteExpiration = expires });
         var claims = new List<Claim> { new(ClaimTypes.Name, email), new("token_key", key) };
+        if (account.TryGetProperty("userId", out var userId) && userId.GetString() is string id) claims.Add(new Claim(ClaimTypes.NameIdentifier, id));
         foreach (var role in account.GetProperty("roles").EnumerateArray())
             if (role.GetString() is string name) claims.Add(new Claim(ClaimTypes.Role, name));
         var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);

@@ -314,7 +314,10 @@ public sealed class LoginIntegrationTests
             ["__RequestVerificationToken"] = FormToken(detailHtml), ["id"] = webProjectId, ["title"] = "MVC task", ["description"] = "Inspect", ["priority"] = "0", ["status"] = "0", ["percentComplete"] = "0"
         }));
         Assert.Equal(HttpStatusCode.Redirect, createWebTask.StatusCode);
-        Assert.Contains("MVC task", await webClient.GetStringAsync(detailPath));
+        var updatedDetailHtml = await webClient.GetStringAsync(detailPath);
+        Assert.Contains("MVC task", updatedDetailHtml);
+        Assert.Contains("Assign task", updatedDetailHtml);
+        Assert.Contains("Delete task", updatedDetailHtml);
         using (var scope = factory.Services.CreateScope())
         {
             var users = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();

@@ -1,3 +1,4 @@
+using SiteLedger.Api.Auditing;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -31,6 +32,7 @@ public sealed class ProjectEditingController(SiteLedgerDbContext db, ICurrentTen
         }
         item.Name = input.Name.Trim(); item.ClientName = input.ClientName.Trim(); item.SiteAddress = input.SiteAddress.Trim();
         item.Budget = input.Budget; item.StartDate = input.StartDate; item.EndDate = input.EndDate; item.Status = input.Status;
+        AuditEvents.Add(db, current, "project.update", nameof(Project), item.Id);
         try { await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return Ok(item); }
         catch (DbUpdateConcurrencyException) { return Conflict(new { error = "Project changed. Reload and retry." }); }
     }

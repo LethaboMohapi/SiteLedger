@@ -39,6 +39,12 @@ public sealed class ProjectsController(ApiClient api) : Controller
         using var expenses = await api.Send(HttpMethod.Get, $"api/v1/projects/{id}/expenses");
         if (!reports.IsSuccessStatusCode || !expenses.IsSuccessStatusCode) { TempData["Message"] = "Project records could not be loaded."; return RedirectToAction(nameof(Index)); }
         ViewBag.ProjectId = id;
+        ViewBag.Assignees = Array.Empty<System.Text.Json.JsonElement>();
+        if (User.IsInRole("TenantAdmin") || User.IsInRole("Manager"))
+        {
+            using var assignees = await api.Send(HttpMethod.Get, $"api/v1/projects/{id}/tasks/assignees");
+            if (assignees.IsSuccessStatusCode) ViewBag.Assignees = await ApiClient.Array(assignees);
+        }
         ViewBag.Reports = await ApiClient.Array(reports);
         ViewBag.Expenses = await ApiClient.Array(expenses);
         return View(await ApiClient.Array(tasks));
@@ -79,6 +85,13 @@ public sealed class ProjectsController(ApiClient api) : Controller
         if (!response.IsSuccessStatusCode) { TempData["Message"] = "Export requires an eligible plan and role."; return RedirectToAction(nameof(Index)); }
         return File(await response.Content.ReadAsByteArrayAsync(), "text/csv; charset=utf-8", $"siteledger-{kind ?? "projects"}.csv");
     }
+    [HttpGet] public async Task<IActionResult> ReportPdf(Guid id, Guid reportId)
+    {
+        using var response = await api.Send(HttpMethod.Get, $"api/v1/exports/projects/{id}/reports/{reportId}.pdf");
+        if (!response.IsSuccessStatusCode) { TempData["Message"] = "PDF export requires an eligible plan, role and project access."; return RedirectToAction(nameof(Detail), new { id }); }
+        Response.Headers.CacheControl = "no-store";
+        return File(await response.Content.ReadAsByteArrayAsync(), "application/pdf", $"site-report-{reportId:N}.pdf");
+    }
     [HttpGet] public async Task<IActionResult> Members(Guid id)
     {
         using var members = await api.Send(HttpMethod.Get, $"api/v1/projects/{id}/members");
@@ -94,6 +107,20 @@ public sealed class ProjectsController(ApiClient api) : Controller
         using var response = await api.Send(remove ? HttpMethod.Delete : HttpMethod.Put, path, remove ? null : new { userId, roleOnProject });
         TempData["Message"] = response.IsSuccessStatusCode ? "Membership updated." : "Membership could not be updated.";
         return RedirectToAction(nameof(Members), new { id });
+    }
+
+    [HttpPost] public async Task<IActionResult> Assign(Guid id, Guid itemId, Guid version, string? userId)
+    {
+        using var result = await api.Send(HttpMethod.Put, $"api/v1/projects/{id}/tasks/{itemId}/assignee", new { version, userId = string.IsNullOrWhiteSpace(userId) ? null : userId });
+        TempData["Message"] = result.IsSuccessStatusCode ? "Task assignment updated." : "Assignment could not be changed. Refresh and check membership and access.";
+        return RedirectToAction(nameof(Detail), new { id });
+    }
+    [HttpPost] public async Task<IActionResult> DeleteRecord(Guid id, Guid itemId, Guid version, string kind)
+    {
+        if (kind is not ("tasks" or "reports" or "expenses")) return BadRequest();
+        using var result = await api.Send(HttpMethod.Delete, $"api/v1/projects/{id}/{kind}/{itemId}?version={version}");
+        TempData["Message"] = result.IsSuccessStatusCode ? "Record removed." : "Record could not be removed. Refresh and check access and status.";
+        return RedirectToAction(nameof(Detail), new { id });
     }
 
 }

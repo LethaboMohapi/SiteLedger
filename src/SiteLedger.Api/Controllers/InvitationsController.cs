@@ -35,6 +35,7 @@ public sealed class InvitationsController(SiteLedgerDbContext db, ICurrentTenant
             return Problem(statusCode: 503, title: "Invitation email is not configured.");
         var address = input.Email.Trim();
         if (await users.FindByEmailAsync(address) is not null) return Conflict(new { error = "This account cannot be invited." });
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
         var token = WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(32));
         var invitation = new Invitation { Email = address, Role = input.Role, TokenHash = Hash(token), ExpiresAt = DateTimeOffset.UtcNow.AddDays(2) };
         db.Invitations.Add(invitation);
@@ -47,6 +48,7 @@ public sealed class InvitationsController(SiteLedgerDbContext db, ICurrentTenant
             logger.LogWarning("Invitation email delivery failed: {ErrorType}", ex.GetType().Name);
             return Problem(statusCode: 503, title: "Invitation email delivery failed. Please retry.");
         }
+        await transaction.CommitAsync(ct);
         return Accepted();
     }
 

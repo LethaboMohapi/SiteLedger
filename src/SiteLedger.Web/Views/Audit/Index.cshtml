@@ -1,0 +1,8 @@
+@model System.Text.Json.JsonElement[]
+@{ ViewData["Title"] = "Audit"; var page = (int?)(ViewBag.Page) ?? 1; }
+<section class="heading"><div><p class="eyebrow">WORKSPACE OVERSIGHT</p><h1>Audit activity</h1><p class="muted">Recorded changes in your workspace.</p></div></section>
+@if (ViewBag.Error is string error) { <p class="error" role="alert">@error</p> }
+<section class="card"><div class="card-head"><h2>Recent activity</h2><span class="muted">Page @(page)</span></div>
+@if (Model.Length == 0) { <p class="muted">No audit events on this page.</p> }
+@foreach (var item in Model) { <article class="record"><b>@item.GetProperty("action").GetString()</b><p class="muted">@item.GetProperty("timestamp").GetString() · @item.GetProperty("entityType").GetString() · @item.GetProperty("entityId").GetString()</p><p>Actor: @item.GetProperty("userId").GetString()</p></article> }
+<div class="actions">@if (page > 1) { <a asp-action="Index" asp-route-page="@(page - 1)">Previous</a> } @if (Model.Length == 50) { <a asp-action="Index" asp-route-page="@(page + 1)">Next</a> }</div></section>

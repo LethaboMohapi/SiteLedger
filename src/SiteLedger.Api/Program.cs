@@ -47,7 +47,9 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 builder.Services.AddScoped<ILoginService, LoginService>();
 builder.Services.AddScoped<AuthenticatorService>();
 builder.Services.AddScoped<RefreshTokenService>();
-builder.Services.AddScoped<IAccountEmailSender, SmtpAccountEmailSender>();
+builder.Services.AddScoped<IAccountEmailTransport, SmtpAccountEmailSender>();
+builder.Services.AddScoped<IAccountEmailSender, OutboxAccountEmailSender>();
+builder.Services.AddHostedService<EmailOutboxDispatcher>();
 builder.Services.AddScoped<IProjectService, ProjectService>();
 builder.Services.AddAuthentication(options =>
 {

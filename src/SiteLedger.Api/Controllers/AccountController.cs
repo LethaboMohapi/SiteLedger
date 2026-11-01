@@ -47,8 +47,13 @@ public sealed class AccountController(SiteLedgerDbContext db, UserManager<Applic
         var result = await users.CreateAsync(user, input.Password);
         if (!result.Succeeded) return BadRequest(new { errors = result.Errors.Select(e => e.Description) });
         if (!(await users.AddToRoleAsync(user, Roles.TenantAdmin)).Succeeded) return Conflict(new { error = "Could not create account. Please retry." });
+        try { await SendConfirmation(user, ct); }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError("Failed to queue confirmation email: {ErrorType}", ex.GetType().Name);
+            return Problem(statusCode: 503, title: "Account registration is temporarily unavailable.");
+        }
         await tx.CommitAsync(ct);
-        await SendConfirmation(user, ct);
         return Accepted();
     }
 
@@ -57,7 +62,9 @@ public sealed class AccountController(SiteLedgerDbContext db, UserManager<Applic
     {
         if (!HasBase || !email.IsConfigured) return Problem(statusCode: 503, title: "Account email is not configured.");
         var user = await users.FindByEmailAsync(input.Email.Trim());
-        if (user is not null && user.IsActive && !user.EmailConfirmed) await SendConfirmation(user, ct);
+        if (user is not null && user.IsActive && !user.EmailConfirmed)
+            try { await SendConfirmation(user, ct); }
+            catch (Exception ex) when (ex is not OperationCanceledException) { logger.LogError("Failed to queue confirmation email: {ErrorType}", ex.GetType().Name); }
         return Accepted();
     }
 
@@ -98,12 +105,12 @@ public sealed class AccountController(SiteLedgerDbContext db, UserManager<Applic
     {
         var token = Encode(await users.GenerateEmailConfirmationTokenAsync(user));
         var url = QueryHelpers.AddQueryString($"{PublicBase}/api/v1/account/confirm", new Dictionary<string, string?> { ["userId"] = user.Id, ["token"] = token });
-        await TrySend(user.Email!, "Confirm your SiteLedger account", $"Confirm your email by opening this link: {url}", ct);
+        await email.SendAsync(user.Email!, "Confirm your SiteLedger account", $"Confirm your email by opening this link: {url}", ct);
     }
 
     private async Task TrySend(string recipient, string subject, string body, CancellationToken ct)
     {
         try { await email.SendAsync(recipient, subject, body, ct); }
-        catch (Exception ex) when (ex is not OperationCanceledException) { logger.LogError(ex, "Account email delivery failed."); }
+        catch (Exception ex) when (ex is not OperationCanceledException) { logger.LogError("Account email queueing failed: {ErrorType}", ex.GetType().Name); }
     }
 }
