@@ -7,6 +7,8 @@
 [![MySQL 8.0](https://img.shields.io/badge/MySQL-8.0-00758F?logo=mysql&logoColor=white)](https://www.mysql.com/)
 ![Code by Lethabo Mohapi](https://img.shields.io/badge/Code_by-Lethabo_Mohapi-blue)
 
+Code by Lethabo Mohapi 2026
+
 SiteLedger is an **unfinished** C# / ASP.NET Core and MySQL foundation for managing construction projects. It is not yet a complete application and must not be exposed or deployed for production use. The MVC interface provides onboarding and access to the current project workflows; production deployment and a complete security review are still outstanding.
 
 ## Current functionality
