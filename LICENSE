@@ -1,21 +1,45 @@
-MIT License
+PROPRIETARY SOFTWARE LICENSE
 
-Copyright (c) 2026 Lethabo Mohapi
+Copyright (c) 2026 Lethabo Mohapi. All rights reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+1. OWNERSHIP
+This software, including its source code, documentation, designs, and related
+materials (the "Software"), is proprietary and is owned by Lethabo Mohapi
+(the "Owner"), unless otherwise stated in a file or component-specific notice.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+2. RESTRICTIONS
+No permission or license is granted to any person to use, copy, reproduce,
+modify, adapt, publish, distribute, sublicense, sell, rent, lease, or create
+derivative works of the Software, in whole or in part, except with the Owner's
+prior express written permission.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+You may not make the Software or any portion of it available to third parties,
+incorporate it into another product, or use it for commercial or non-commercial
+purposes without the Owner's prior express written authorization.
+
+3. LIMITED PERMISSION
+Access to or viewing of this public repository does not, by itself, grant any
+license or other rights to the Software. Any permission granted by the Owner
+must be explicit, in writing, and limited to the scope stated in that permission.
+
+4. THIRD-PARTY MATERIALS
+Components, dependencies, or other materials identified as belonging to third
+parties remain subject to their respective licenses and terms. This license
+does not replace or override those third-party terms.
+
+5. NO WARRANTY
+To the maximum extent permitted by applicable law, the Software is provided
+"AS IS" and without warranties or conditions of any kind, whether express or
+implied, including warranties of merchantability, fitness for a particular
+purpose, and non-infringement.
+
+6. LIMITATION OF LIABILITY
+To the maximum extent permitted by applicable law, the Owner shall not be
+liable for any claim, damages, or other liability arising from, out of, or in
+connection with the Software or its use, distribution, or inability to use it.
+
+7. RESERVATION OF RIGHTS
+All rights not expressly granted in writing are reserved by the Owner.
+
+For permission requests, contact the Owner through the contact information
+provided in the repository or the Owner's GitHub profile.
