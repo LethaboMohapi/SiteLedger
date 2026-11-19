@@ -6,6 +6,7 @@
 [![License: Proprietary](https://img.shields.io/badge/license-Proprietary-red)](LICENSE)
 [![.NET 8.0](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
 [![MySQL 8.0](https://img.shields.io/badge/MySQL-8.0-00758F?logo=mysql&logoColor=white)](https://www.mysql.com/)
+[![Architecture diagram](https://gitdiagram.com/diagram-badge.svg)](https://gitdiagram.com/lethabomohapi/siteledger?utm_source=readme&utm_medium=badge)
 
 ### Code by Lethabo Mohapi 2026
 
